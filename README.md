@@ -8,6 +8,7 @@
 
 A drop-in `pg_restore` wrapper that swaps its noisy stderr for live progress and a classified error summary.
 
+[![CI](https://github.com/amberpixels/ele/actions/workflows/ci.yml/badge.svg)](https://github.com/amberpixels/ele/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/amberpixels/ele)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
@@ -58,18 +59,9 @@ ele        -j 4 -d myapp_dev --clean --no-owner latest.dump
 its output, so there is nothing to pipe. While it runs it shows a live status
 block; when it finishes it prints a summary that survives scrollback:
 
-```
-success - 42 benign error(s) normalized to exit 0
-
-  pre-data   ██████████████████████████  180/180  done
-  data       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  61/61  done
-  post-data  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒  226/226  done
-
-  errors     42 total · 42 benign · 0 real
-             benign  ERROR:  role "..." does not exist  ×42
-
-  raw log    ele-20260715-1225.log
-```
+<p align="center">
+  <img src="docs/example.svg" alt="ele run summary: three completed phase bars, a benign-only error panel, and exit 0" width="720">
+</p>
 
 The exit code is `0` because every error was benign - this is what replaces the
 `|| true` hack in restore scripts. A real (unclassified) error keeps a nonzero
