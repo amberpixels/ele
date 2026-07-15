@@ -1,12 +1,10 @@
 // Command ele wraps pg_restore with a live, aggregated progress view.
 //
-// This build has no live wrapper wired in yet, so it exposes two offline modes:
-//
-//	ele <dump>                  preflight only: print the parsed restore plan
-//	ele --replay <dump> <log>   replay a captured pg_restore stderr log through
-//	                            the parser and aggregator and print the summary
-//
-// Neither mode connects to a database; --replay reads an already-captured log.
+//	ele <pg_restore args>       run a restore live: swallow the verbose stderr
+//	                            and repaint per-phase progress + a classified
+//	                            error panel; print a summary at the end
+//	ele --plan <dump>           offline: print the parsed restore plan only
+//	ele --replay <dump> <log>   offline: replay a captured stderr log
 package main
 
 import (
@@ -17,29 +15,58 @@ import (
 	"os"
 
 	"github.com/amberpixels/ele/internal/aggregator"
+	"github.com/amberpixels/ele/internal/engine"
 	"github.com/amberpixels/ele/internal/parser"
 	"github.com/amberpixels/ele/internal/preflight"
 	"github.com/amberpixels/ele/internal/render"
 )
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	code, err := dispatch(os.Args[1:])
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "ele:", err)
-		os.Exit(1)
+	}
+	os.Exit(code)
+}
+
+func dispatch(args []string) (int, error) {
+	switch {
+	case len(args) == 0 || args[0] == "-h" || args[0] == "--help":
+		printUsage(os.Stderr)
+		return 2, nil
+
+	case args[0] == "--plan":
+		if len(args) != 2 {
+			printUsage(os.Stderr)
+			return 2, nil
+		}
+		return fail(preflightOnly(os.Stdout, args[1]))
+
+	case args[0] == "--replay":
+		if len(args) != 3 {
+			printUsage(os.Stderr)
+			return 2, nil
+		}
+		return fail(replay(os.Stdout, args[1], args[2]))
+
+	default:
+		return engine.Run(context.Background(), args, os.Stdout, os.Stderr)
 	}
 }
 
-func run(args []string, out io.Writer) error {
-	switch {
-	case len(args) == 3 && args[0] == "--replay":
-		return replay(out, args[1], args[2])
-	case len(args) == 1 && args[0] != "-h" && args[0] != "--help":
-		return preflightOnly(out, args[0])
-	default:
-		return fmt.Errorf("usage:\n" +
-			"  ele <dump>                  print the parsed restore plan\n" +
-			"  ele --replay <dump> <log>   replay a captured stderr log and print the summary")
+// fail maps an error from an offline mode to an exit code.
+func fail(err error) (int, error) {
+	if err != nil {
+		return 1, err
 	}
+	return 0, nil
+}
+
+func printUsage(w io.Writer) {
+	fmt.Fprint(w, "usage:\n"+
+		"  ele <pg_restore args>       run a restore live (drop-in pg_restore wrapper)\n"+
+		"  ele --plan <dump>           print the parsed restore plan and exit\n"+
+		"  ele --replay <dump> <log>   replay a captured stderr log and print the summary\n")
 }
 
 func preflightOnly(out io.Writer, dumpPath string) error {
@@ -52,8 +79,7 @@ func preflightOnly(out io.Writer, dumpPath string) error {
 }
 
 // replay runs preflight for the plan, then feeds a captured stderr log through
-// the parser and aggregator - the full pipeline minus the live renderer - and
-// prints the summary. It touches no database.
+// the parser and aggregator and prints the summary. It touches no database.
 func replay(out io.Writer, dumpPath, logPath string) error {
 	res, err := preflight.Run(context.Background(), dumpPath)
 	if err != nil {
@@ -65,8 +91,6 @@ func replay(out io.Writer, dumpPath, logPath string) error {
 	}
 	defer f.Close()
 
-	// The captured logs were produced with --clean --no-owner; classify against
-	// that. A live run will read these from the child's argv.
 	agg := aggregator.New(res.Plan, aggregator.Config{Clean: true, NoOwner: true})
 	p := parser.New()
 	sc := bufio.NewScanner(f)
