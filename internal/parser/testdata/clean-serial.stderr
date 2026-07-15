@@ -1,0 +1,122 @@
+pg_restore: connecting to database for restore
+pg_restore: dropping FK CONSTRAINT book_tags bt_tag_fk
+pg_restore: while PROCESSING TOC:
+pg_restore: from TOC entry 3716; 2606 16431 FK CONSTRAINT book_tags bt_tag_fk postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.book_tags" does not exist
+Command was: ALTER TABLE ONLY public.book_tags DROP CONSTRAINT bt_tag_fk;
+pg_restore: dropping FK CONSTRAINT book_tags bt_book_fk
+pg_restore: from TOC entry 3715; 2606 16426 FK CONSTRAINT book_tags bt_book_fk postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.book_tags" does not exist
+Command was: ALTER TABLE ONLY public.book_tags DROP CONSTRAINT bt_book_fk;
+pg_restore: dropping FK CONSTRAINT books books_author_fk
+pg_restore: from TOC entry 3714; 2606 16421 FK CONSTRAINT books books_author_fk postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.books" does not exist
+Command was: ALTER TABLE ONLY public.books DROP CONSTRAINT books_author_fk;
+pg_restore: dropping RULE author_book_counts _RETURN
+pg_restore: dropping INDEX idx_books_pub
+pg_restore: from TOC entry 3707; 1259 16420 INDEX idx_books_pub postgres
+pg_restore: error: could not execute query: ERROR:  index "idx_books_pub" does not exist
+Command was: DROP INDEX public.idx_books_pub;
+pg_restore: dropping INDEX idx_books_author
+pg_restore: from TOC entry 3706; 1259 16419 INDEX idx_books_author postgres
+pg_restore: error: could not execute query: ERROR:  index "idx_books_author" does not exist
+Command was: DROP INDEX public.idx_books_author;
+pg_restore: dropping CONSTRAINT tags tags_pkey
+pg_restore: from TOC entry 3711; 2606 16411 CONSTRAINT tags tags_pkey postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.tags" does not exist
+Command was: ALTER TABLE ONLY public.tags DROP CONSTRAINT tags_pkey;
+pg_restore: dropping CONSTRAINT tags tags_label_key
+pg_restore: from TOC entry 3709; 2606 16413 CONSTRAINT tags tags_label_key postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.tags" does not exist
+Command was: ALTER TABLE ONLY public.tags DROP CONSTRAINT tags_label_key;
+pg_restore: dropping CONSTRAINT books books_pkey
+pg_restore: from TOC entry 3705; 2606 16402 CONSTRAINT books books_pkey postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.books" does not exist
+Command was: ALTER TABLE ONLY public.books DROP CONSTRAINT books_pkey;
+pg_restore: dropping CONSTRAINT book_tags book_tags_pkey
+pg_restore: from TOC entry 3713; 2606 16418 CONSTRAINT book_tags book_tags_pkey postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.book_tags" does not exist
+Command was: ALTER TABLE ONLY public.book_tags DROP CONSTRAINT book_tags_pkey;
+pg_restore: dropping CONSTRAINT authors authors_pkey
+pg_restore: from TOC entry 3703; 2606 16393 CONSTRAINT authors authors_pkey postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.authors" does not exist
+Command was: ALTER TABLE ONLY public.authors DROP CONSTRAINT authors_pkey;
+pg_restore: dropping DEFAULT tags id
+pg_restore: from TOC entry 3701; 2604 16407 DEFAULT tags id postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.tags" does not exist
+Command was: ALTER TABLE public.tags ALTER COLUMN id DROP DEFAULT;
+pg_restore: dropping DEFAULT books id
+pg_restore: from TOC entry 3700; 2604 16398 DEFAULT books id postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.books" does not exist
+Command was: ALTER TABLE public.books ALTER COLUMN id DROP DEFAULT;
+pg_restore: dropping DEFAULT authors id
+pg_restore: from TOC entry 3699; 2604 16389 DEFAULT authors id postgres
+pg_restore: error: could not execute query: ERROR:  relation "public.authors" does not exist
+Command was: ALTER TABLE public.authors ALTER COLUMN id DROP DEFAULT;
+pg_restore: dropping SEQUENCE tags_id_seq
+pg_restore: from TOC entry 221; 1259 16403 SEQUENCE tags_id_seq postgres
+pg_restore: error: could not execute query: ERROR:  sequence "tags_id_seq" does not exist
+Command was: DROP SEQUENCE public.tags_id_seq;
+pg_restore: dropping TABLE tags
+pg_restore: from TOC entry 222; 1259 16404 TABLE tags postgres
+pg_restore: error: could not execute query: ERROR:  table "tags" does not exist
+Command was: DROP TABLE public.tags;
+pg_restore: dropping SEQUENCE books_id_seq
+pg_restore: from TOC entry 219; 1259 16394 SEQUENCE books_id_seq postgres
+pg_restore: error: could not execute query: ERROR:  sequence "books_id_seq" does not exist
+Command was: DROP SEQUENCE public.books_id_seq;
+pg_restore: dropping TABLE books
+pg_restore: from TOC entry 220; 1259 16395 TABLE books postgres
+pg_restore: error: could not execute query: ERROR:  table "books" does not exist
+Command was: DROP TABLE public.books;
+pg_restore: dropping TABLE book_tags
+pg_restore: from TOC entry 223; 1259 16414 TABLE book_tags postgres
+pg_restore: error: could not execute query: ERROR:  table "book_tags" does not exist
+Command was: DROP TABLE public.book_tags;
+pg_restore: dropping SEQUENCE authors_id_seq
+pg_restore: from TOC entry 217; 1259 16385 SEQUENCE authors_id_seq postgres
+pg_restore: error: could not execute query: ERROR:  sequence "authors_id_seq" does not exist
+Command was: DROP SEQUENCE public.authors_id_seq;
+pg_restore: dropping TABLE authors
+pg_restore: from TOC entry 218; 1259 16386 TABLE authors postgres
+pg_restore: error: could not execute query: ERROR:  table "authors" does not exist
+Command was: DROP TABLE public.authors;
+pg_restore: dropping VIEW author_book_counts
+pg_restore: dropping FUNCTION title_len(text)
+pg_restore: from TOC entry 225; 1255 16440 FUNCTION title_len(text) postgres
+pg_restore: error: could not execute query: ERROR:  function public.title_len(text) does not exist
+Command was: DROP FUNCTION public.title_len(t text);
+pg_restore: creating FUNCTION "public.title_len(text)"
+pg_restore: creating VIEW "public.author_book_counts"
+pg_restore: creating TABLE "public.authors"
+pg_restore: creating SEQUENCE "public.authors_id_seq"
+pg_restore: creating SEQUENCE OWNED BY "public.authors_id_seq"
+pg_restore: creating TABLE "public.book_tags"
+pg_restore: creating TABLE "public.books"
+pg_restore: creating SEQUENCE "public.books_id_seq"
+pg_restore: creating SEQUENCE OWNED BY "public.books_id_seq"
+pg_restore: creating TABLE "public.tags"
+pg_restore: creating SEQUENCE "public.tags_id_seq"
+pg_restore: creating SEQUENCE OWNED BY "public.tags_id_seq"
+pg_restore: creating DEFAULT "public.authors id"
+pg_restore: creating DEFAULT "public.books id"
+pg_restore: creating DEFAULT "public.tags id"
+pg_restore: processing data for table "public.authors"
+pg_restore: processing data for table "public.book_tags"
+pg_restore: processing data for table "public.books"
+pg_restore: processing data for table "public.tags"
+pg_restore: executing SEQUENCE SET authors_id_seq
+pg_restore: executing SEQUENCE SET books_id_seq
+pg_restore: executing SEQUENCE SET tags_id_seq
+pg_restore: creating CONSTRAINT "public.authors authors_pkey"
+pg_restore: creating CONSTRAINT "public.book_tags book_tags_pkey"
+pg_restore: creating CONSTRAINT "public.books books_pkey"
+pg_restore: creating CONSTRAINT "public.tags tags_label_key"
+pg_restore: creating CONSTRAINT "public.tags tags_pkey"
+pg_restore: creating INDEX "public.idx_books_author"
+pg_restore: creating INDEX "public.idx_books_pub"
+pg_restore: creating RULE "public.author_book_counts _RETURN"
+pg_restore: creating FK CONSTRAINT "public.books books_author_fk"
+pg_restore: creating FK CONSTRAINT "public.book_tags bt_book_fk"
+pg_restore: creating FK CONSTRAINT "public.book_tags bt_tag_fk"
+pg_restore: warning: errors ignored on restore: 21

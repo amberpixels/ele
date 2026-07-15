@@ -1,0 +1,8 @@
+# restore logs (may contain real schema/object names — never commit)
+*.log
+run.log
+
+# local dumps and scratch
+*.dump
+/tmp/
+/ele

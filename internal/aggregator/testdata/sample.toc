@@ -1,0 +1,48 @@
+;
+; Archive created at 2026-07-15 12:00:55 EEST
+;     dbname: ele_src
+;     TOC Entries: 37
+;     Compression: gzip
+;     Dump Version: 1.16-0
+;     Format: CUSTOM
+;     Integer: 4 bytes
+;     Offset: 8 bytes
+;     Dumped from database version: 17.10 (Homebrew)
+;     Dumped by pg_dump version: 17.10 (Homebrew)
+;
+;
+; Selected TOC Entries:
+;
+225; 1255 16440 FUNCTION public title_len(text) postgres
+224; 1259 16436 VIEW public author_book_counts postgres
+218; 1259 16386 TABLE public authors postgres
+217; 1259 16385 SEQUENCE public authors_id_seq postgres
+3876; 0 0 SEQUENCE OWNED BY public authors_id_seq postgres
+223; 1259 16414 TABLE public book_tags postgres
+220; 1259 16395 TABLE public books postgres
+219; 1259 16394 SEQUENCE public books_id_seq postgres
+3877; 0 0 SEQUENCE OWNED BY public books_id_seq postgres
+222; 1259 16404 TABLE public tags postgres
+221; 1259 16403 SEQUENCE public tags_id_seq postgres
+3878; 0 0 SEQUENCE OWNED BY public tags_id_seq postgres
+3699; 2604 16389 DEFAULT public authors id postgres
+3700; 2604 16398 DEFAULT public books id postgres
+3701; 2604 16407 DEFAULT public tags id postgres
+3864; 0 16386 TABLE DATA public authors postgres
+3869; 0 16414 TABLE DATA public book_tags postgres
+3866; 0 16395 TABLE DATA public books postgres
+3868; 0 16404 TABLE DATA public tags postgres
+3879; 0 0 SEQUENCE SET public authors_id_seq postgres
+3880; 0 0 SEQUENCE SET public books_id_seq postgres
+3881; 0 0 SEQUENCE SET public tags_id_seq postgres
+3703; 2606 16393 CONSTRAINT public authors authors_pkey postgres
+3713; 2606 16418 CONSTRAINT public book_tags book_tags_pkey postgres
+3705; 2606 16402 CONSTRAINT public books books_pkey postgres
+3709; 2606 16413 CONSTRAINT public tags tags_label_key postgres
+3711; 2606 16411 CONSTRAINT public tags tags_pkey postgres
+3706; 1259 16419 INDEX public idx_books_author postgres
+3707; 1259 16420 INDEX public idx_books_pub postgres
+3862; 2618 16439 RULE public author_book_counts _RETURN postgres
+3714; 2606 16421 FK CONSTRAINT public books books_author_fk postgres
+3715; 2606 16426 FK CONSTRAINT public book_tags bt_book_fk postgres
+3716; 2606 16431 FK CONSTRAINT public book_tags bt_tag_fk postgres

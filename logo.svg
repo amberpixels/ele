@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 100" width="208" height="100" xml:space="preserve">
+  <style>
+    text { font-family: 'Menlo','Consolas','DejaVu Sans Mono',monospace; font-size: 26px; font-weight: 700; white-space: pre; }
+  </style>
+  <rect width="208" height="100" fill="transparent"/>
+  <!-- E (left, high) -->
+  <text x="8" y="26" fill="#14B8A6">░█▀▀</text>
+  <text x="8" y="48" fill="#14B8A6">░█▀▀</text>
+  <text x="8" y="70" fill="#14B8A6">░▀▀▀</text>
+  <!-- L (middle, dipped — the palindrome's pivot) -->
+  <text x="74" y="44" fill="#6366F1">░█░░</text>
+  <text x="74" y="66" fill="#6366F1">░█░░</text>
+  <text x="74" y="88" fill="#6366F1">░▀▀▀</text>
+  <!-- E (right, high — mirror of the left E) -->
+  <text x="140" y="26" fill="#14B8A6">░█▀▀</text>
+  <text x="140" y="48" fill="#14B8A6">░█▀▀</text>
+  <text x="140" y="70" fill="#14B8A6">░▀▀▀</text>
+</svg>
