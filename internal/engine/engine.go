@@ -63,7 +63,10 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 	var mu sync.Mutex
 
 	live, stopTicker := startRenderer(stderrFile, agg, &mu, render.Opts{
-		Width: render.Width(stderrFile), Title: f.dbName, LogPath: logPath,
+		Width:   render.Width(stderrFile),
+		Title:   f.dbName,
+		LogPath: logPath,
+		Styles:  render.NewStyles(stderrFile),
 	})
 	if live != nil {
 		defer live.Close() // restore the cursor even on panic; idempotent

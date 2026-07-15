@@ -1,7 +1,7 @@
 // Package render turns an aggregator.Snapshot into human output: a live,
 // in-place-repainting block on a TTY, and a plain line-oriented form everywhere
-// else. Frame and Summary are pure (snapshot -> lines) so they can be tested
-// against fixed-width golden frames; the live driver adds only cursor motion.
+// else. Frame and Summary carry the layout; color comes from lipgloss Styles
+// that degrade to plain on non-TTY / NO_COLOR output.
 package render
 
 import (
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/amberpixels/ele/internal/aggregator"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // barWidth is the fixed cell width of a phase bar.
@@ -20,19 +21,24 @@ const maxGroups = 5
 
 // Opts controls a rendered frame.
 type Opts struct {
-	Width   int    // terminal width; lines are truncated to it (0 = no limit)
-	Title   string // e.g. "throwaway"; omitted when empty
-	LogPath string // raw-log path shown in the panel; omitted when empty
-	Spinner rune   // in-flight spinner glyph; 0 hides the spinner
+	Width   int     // terminal width; lines are truncated to it (0 = no limit)
+	Title   string  // e.g. "throwaway"; omitted when empty
+	LogPath string  // raw-log path shown in the panel; omitted when empty
+	Spinner rune    // in-flight spinner glyph; 0 hides the spinner
+	Styles  *Styles // color styles; nil = plain
 }
 
-// Frame renders the live status block as plain text lines (no ANSI). The live
-// driver repaints exactly these lines; color is layered on separately so tests
-// can assert on stable text.
+// Frame renders the live status block. Lines are colored per Opts.Styles and
+// truncated (ANSI-aware) to Opts.Width.
 func Frame(s aggregator.Snapshot, opt Opts) []string {
+	st := opt.Styles
+	if st == nil {
+		st = plainStyles()
+	}
+
 	var lines []string
 	add := func(format string, a ...any) {
-		lines = append(lines, truncate(fmt.Sprintf(format, a...), opt.Width))
+		lines = append(lines, truncateLine(fmt.Sprintf(format, a...), opt.Width))
 	}
 
 	if opt.Title != "" {
@@ -40,42 +46,42 @@ func Frame(s aggregator.Snapshot, opt Opts) []string {
 		add("")
 	}
 
-	add("  %s", phaseBar("pre-data", s.Pre.Done, s.Pre.Total, ""))
-	add("  %s", phaseBar("data", s.Data.Done, s.Data.Total, dataNote(s)))
+	add("  %s", phaseBar(st, "pre-data", s.Pre.Done, s.Pre.Total, ""))
+	add("  %s", phaseBar(st, "data", s.Data.Done, s.Data.Total, dataNote(s)))
 	if fl := inFlightLine(s, opt.Spinner); fl != "" {
 		add("             %s", fl)
 	}
-	add("  %s", phaseBar("post-data", s.Post.Done, s.Post.Total, ""))
+	add("  %s", phaseBar(st, "post-data", s.Post.Done, s.Post.Total, ""))
 
 	add("")
-	add("  errors     %s", errorCounter(s))
+	add("  errors     %s", errorCounter(st, s))
 	shown := s.Errors
 	if len(shown) > maxGroups {
 		shown = shown[:maxGroups]
 	}
 	for _, g := range shown {
-		add("             %s", groupLine(g))
+		add("             %s", groupLine(st, g))
 	}
 	if opt.LogPath != "" {
-		add("  log        %s", opt.LogPath)
+		add("  log        %s", st.dim.Render(opt.LogPath))
 	}
 	return lines
 }
 
 // phaseBar renders "name  ███░░░  done/total  pct" with an optional trailing note.
-func phaseBar(name string, done, total int, note string) string {
+func phaseBar(st *Styles, name string, done, total int, note string) string {
 	filled := 0
 	if total > 0 {
 		filled = done * barWidth / total
 	}
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+	bar := st.bar.Render(strings.Repeat("█", filled)) + st.empty.Render(strings.Repeat("░", barWidth-filled))
 
 	status := fmt.Sprintf("%d/%d", done, total)
 	switch {
 	case total > 0 && done >= total:
-		status += "  done"
+		status += "  " + st.done.Render("done")
 	case total > 0:
-		status += fmt.Sprintf("  %d%%", done*100/total)
+		status += "  " + st.pct.Render(fmt.Sprintf("%d%%", done*100/total))
 	}
 	line := fmt.Sprintf("%-10s %s  %s", name, bar, status)
 	if note != "" {
@@ -115,37 +121,45 @@ func inFlightLine(s aggregator.Snapshot, spinner rune) string {
 	return line
 }
 
-func errorCounter(s aggregator.Snapshot) string {
-	return fmt.Sprintf("%d total · %d benign · %d real", s.ErrTotal, s.ErrBenign, s.ErrReal)
+// errorCounter renders "N total · N benign · N real", the real count in red
+// when nonzero.
+func errorCounter(st *Styles, s aggregator.Snapshot) string {
+	benign := st.benign.Render(fmt.Sprintf("%d benign", s.ErrBenign))
+	realStyle := st.dim
+	if s.ErrReal > 0 {
+		realStyle = st.real
+	}
+	real := realStyle.Render(fmt.Sprintf("%d real", s.ErrReal))
+	return fmt.Sprintf("%d total · %s · %s", s.ErrTotal, benign, real)
 }
 
-func groupLine(g aggregator.ErrorGroup) string {
-	class := "real  "
-	if g.Benign {
-		class = "benign"
-	}
+// groupLine renders one error group, dim for benign and red for real.
+func groupLine(st *Styles, g aggregator.ErrorGroup) string {
 	text := strings.TrimPrefix(g.Template, "could not execute query: ")
-	line := fmt.Sprintf("%s  %s  ×%d", class, text, g.Count)
+	line := fmt.Sprintf("%-6s  %s  ×%d", class(g), text, g.Count)
 	if g.Distinct > 1 {
 		line += fmt.Sprintf(" (%d objects)", g.Distinct)
 	}
-	return line
+	if g.Benign {
+		return st.benign.Render(line)
+	}
+	return st.real.Render(line)
 }
 
-// truncate shortens s to at most width runes (ellipsis when cut). width <= 0
-// means no limit.
-func truncate(s string, width int) string {
+func class(g aggregator.ErrorGroup) string {
+	if g.Benign {
+		return "benign"
+	}
+	return "real"
+}
+
+// truncateLine shortens a possibly-styled line to width visible cells, keeping
+// ANSI sequences intact. width <= 0 means no limit.
+func truncateLine(s string, width int) string {
 	if width <= 0 {
 		return s
 	}
-	r := []rune(s)
-	if len(r) <= width {
-		return s
-	}
-	if width == 1 {
-		return "…"
-	}
-	return string(r[:width-1]) + "…"
+	return ansi.Truncate(s, width, "…")
 }
 
 // humanBytes renders a byte count compactly, e.g. "3.1 GB".
