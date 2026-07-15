@@ -112,6 +112,34 @@ func TestSummaryOutcome(t *testing.T) {
 	}
 }
 
+func TestPlainProgress(t *testing.T) {
+	var buf bytes.Buffer
+	pp := NewPlainProgress(&buf)
+
+	snap := func(pre, data, post int) aggregator.Snapshot {
+		return aggregator.Snapshot{
+			Pre:  aggregator.PhaseProgress{Done: pre, Total: 100},
+			Data: aggregator.PhaseProgress{Done: data, Total: 100},
+			Post: aggregator.PhaseProgress{Done: post, Total: 100},
+		}
+	}
+
+	pp.Update(snap(0, 0, 0))    // first tick -> emits
+	pp.Update(snap(50, 0, 0))   // no milestone (pre incomplete, deciles unchanged)
+	pp.Update(snap(100, 0, 0))  // pre completes -> emits
+	pp.Update(snap(100, 10, 0)) // data crosses 10% -> emits
+	pp.Update(snap(100, 15, 0)) // same decile -> silent
+	pp.Update(snap(100, 20, 0)) // data crosses 20% -> emits
+
+	out := buf.String()
+	if n := strings.Count(out, "\n"); n != 4 {
+		t.Errorf("emitted %d lines, want 4:\n%s", n, out)
+	}
+	if !strings.Contains(out, "pre 100/100") || !strings.Contains(out, "data 20/100 20%") {
+		t.Errorf("last line wrong:\n%s", out)
+	}
+}
+
 func TestLiveRepaint(t *testing.T) {
 	var buf bytes.Buffer
 	l := NewLive(&buf)

@@ -20,9 +20,9 @@ func Summary(w io.Writer, s aggregator.Snapshot, logPath string, elapsed time.Du
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  %s\n", phaseBar(st, "pre-data", s.Pre.Done, s.Pre.Total, ""))
-	fmt.Fprintf(w, "  %s\n", phaseBar(st, "data", s.Data.Done, s.Data.Total, dataNote(s)))
-	fmt.Fprintf(w, "  %s\n", phaseBar(st, "post-data", s.Post.Done, s.Post.Total, ""))
+	fmt.Fprintf(w, "  %s\n", phaseBar(st, "pre-data", fillPre, s.Pre.Done, s.Pre.Total, ""))
+	fmt.Fprintf(w, "  %s\n", phaseBar(st, "data", fillData, s.Data.Done, s.Data.Total, dataNote(s)))
+	fmt.Fprintf(w, "  %s\n", phaseBar(st, "post-data", fillPost, s.Post.Done, s.Post.Total, ""))
 
 	fmt.Fprintf(w, "\n  errors     %s\n", errorCounter(st, s))
 	for _, g := range s.Errors {

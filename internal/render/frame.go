@@ -15,6 +15,15 @@ import (
 // barWidth is the fixed cell width of a phase bar.
 const barWidth = 26
 
+// Each phase fills with a distinct shade so three stacked bars read as three
+// separate bars rather than one merged block; the empty track is uniform.
+const (
+	fillPre   = '█'
+	fillData  = '▓'
+	fillPost  = '▒'
+	fillEmpty = '░'
+)
+
 // maxGroups caps how many error groups the panel lists; the counter line always
 // carries the full totals.
 const maxGroups = 5
@@ -46,12 +55,14 @@ func Frame(s aggregator.Snapshot, opt Opts) []string {
 		add("")
 	}
 
-	add("  %s", phaseBar(st, "pre-data", s.Pre.Done, s.Pre.Total, ""))
-	add("  %s", phaseBar(st, "data", s.Data.Done, s.Data.Total, dataNote(s)))
+	add("  %s", phaseBar(st, "pre-data", fillPre, s.Pre.Done, s.Pre.Total, ""))
+	add("  %s", phaseBar(st, "data", fillData, s.Data.Done, s.Data.Total, dataNote(s)))
+	add("  %s", phaseBar(st, "post-data", fillPost, s.Post.Done, s.Post.Total, ""))
+	// The in-flight line sits below all three bars: under -j, data and post-data
+	// items run concurrently, so it reflects current activity across the restore.
 	if fl := inFlightLine(s, opt.Spinner); fl != "" {
 		add("             %s", fl)
 	}
-	add("  %s", phaseBar(st, "post-data", s.Post.Done, s.Post.Total, ""))
 
 	add("")
 	add("  errors     %s", errorCounter(st, s))
@@ -68,13 +79,14 @@ func Frame(s aggregator.Snapshot, opt Opts) []string {
 	return lines
 }
 
-// phaseBar renders "name  ███░░░  done/total  pct" with an optional trailing note.
-func phaseBar(st *Styles, name string, done, total int, note string) string {
+// phaseBar renders "name  ▓▓▓░░░  done/total  pct" with an optional trailing
+// note. fill is the phase's filled-cell glyph; the empty track is uniform.
+func phaseBar(st *Styles, name string, fill rune, done, total int, note string) string {
 	filled := 0
 	if total > 0 {
 		filled = done * barWidth / total
 	}
-	bar := st.bar.Render(strings.Repeat("█", filled)) + st.empty.Render(strings.Repeat("░", barWidth-filled))
+	bar := st.bar.Render(strings.Repeat(string(fill), filled)) + st.empty.Render(strings.Repeat(string(fillEmpty), barWidth-filled))
 
 	status := fmt.Sprintf("%d/%d", done, total)
 	switch {

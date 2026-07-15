@@ -23,8 +23,12 @@ import (
 	"github.com/amberpixels/ele/internal/toc"
 )
 
-// tickInterval is the repaint cadence (~10 fps).
-const tickInterval = 100 * time.Millisecond
+// tickInterval is the live repaint cadence (~10 fps); plainInterval is the
+// slower cadence for checking plain-mode progress milestones.
+const (
+	tickInterval  = 100 * time.Millisecond
+	plainInterval = 500 * time.Millisecond
+)
 
 var spinner = []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
 
@@ -107,15 +111,34 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 	return exitCode(result, snap, stderrFile), nil
 }
 
-// startRenderer starts the live repaint loop unless output is plain. It returns
-// the Live writer (nil in plain mode) and a stop function that halts the ticker.
+// startRenderer starts the progress loop: a live repaint block on a TTY, or
+// periodic one-line milestones when output is plain. It returns the Live writer
+// (nil in plain mode) and a stop function that halts the ticker.
 func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mutex, opt render.Opts) (*render.Live, func()) {
-	if render.Plain(stderrFile) {
-		return nil, func() {}
-	}
-	live := render.NewLive(stderrFile)
 	done := make(chan struct{})
 	var wg sync.WaitGroup
+
+	if render.Plain(stderrFile) {
+		pp := render.NewPlainProgress(stderrFile)
+		wg.Go(func() {
+			t := time.NewTicker(plainInterval)
+			defer t.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-t.C:
+					mu.Lock()
+					snap := agg.Snapshot()
+					mu.Unlock()
+					pp.Update(snap)
+				}
+			}
+		})
+		return nil, func() { close(done); wg.Wait() }
+	}
+
+	live := render.NewLive(stderrFile)
 	wg.Go(func() {
 		t := time.NewTicker(tickInterval)
 		defer t.Stop()
