@@ -38,18 +38,25 @@ happened, not just whether pg_restore was noisy.
 go install github.com/amberpixels/ele/cmd/ele@latest
 ```
 
-Requires `pg_restore` on your `PATH` (PostgreSQL 13-18 client tools).
+Requires `pg_restore` on your `PATH`. Developed against PostgreSQL 17; other
+versions likely work but aren't verified yet.
 
 ## Quick Start
 
-Replace `pg_restore` with `ele` - every argument passes through untouched:
+`ele` is a drop-in replacement, not a pipe. Take your `pg_restore` command and
+put `ele` where `pg_restore` was - every argument passes through untouched:
 
 ```sh
-ele -j 4 -d myapp_dev --clean --no-owner latest.dump
+# before
+pg_restore -j 4 -d myapp_dev --clean --no-owner latest.dump
+
+# after (just swap the command name)
+ele        -j 4 -d myapp_dev --clean --no-owner latest.dump
 ```
 
-While it runs, `ele` shows a live status block; when it finishes it prints a
-summary that survives scrollback:
+`ele` runs `pg_restore` for you (adding `--verbose` under the hood) and captures
+its output, so there is nothing to pipe. While it runs it shows a live status
+block; when it finishes it prints a summary that survives scrollback:
 
 ```
 success - 42 benign error(s) normalized to exit 0
@@ -82,9 +89,12 @@ connecting to any database.
 ## How It Works
 
 - **Preflight** runs `pg_restore -l` (under `LC_ALL=C`) and parses the table of
-  contents into exact per-phase denominators - not estimates. The section isn't
-  printed in the listing, so `ele` reconstructs it from each object's type the
-  same way `pg_dump` assigns it. Directory-format dumps also get byte totals.
+  contents into exact per-phase denominators - not estimates. The phases are
+  PostgreSQL's own restore sections (`pg_restore --section`): **pre-data**
+  (schema, tables, functions), **data** (rows), and **post-data** (indexes,
+  constraints, triggers), replayed in that order. The section isn't printed in
+  the listing, so `ele` reconstructs it from each object's type the same way
+  `pg_dump` assigns it. Directory-format dumps also get byte totals.
 - **Run** spawns the real `pg_restore` with `--verbose` forced on, streams its
   stderr line by line, and tees every raw line to the log file. stdout is passed
   through untouched.
