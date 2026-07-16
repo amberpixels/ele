@@ -30,10 +30,17 @@ happened, not just whether pg_restore was noisy.
 
 > [!NOTE]
 > Pre-1.0. The pipeline works end to end (live wrapper, error classification,
-> exit-code normalization); still to come are an honest ETA and prebuilt
-> binaries / a brew tap. For now, install with `go install`.
+> exit-code normalization); an honest ETA is still to come.
 
 ## Install
+
+### Homebrew (macOS)
+
+```sh
+brew install amberpixels/tap/ele
+```
+
+### go install
 
 ```sh
 go install github.com/amberpixels/ele/cmd/ele@latest
