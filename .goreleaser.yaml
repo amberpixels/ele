@@ -1,0 +1,68 @@
+# GoReleaser config for ele — builds cross-platform binaries, cuts a GitHub
+# Release, and publishes the Homebrew formula to amberpixels/homebrew-tap.
+# Docs: https://goreleaser.com
+version: 2
+
+project_name: ele
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ele
+    main: ./cmd/ele
+    binary: ele
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: ele
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+homebrew_casks:
+  - name: ele
+    repository:
+      owner: amberpixels
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/amberpixels/ele"
+    description: "Quiet the elephant — a drop-in pg_restore wrapper with live progress and a classified error summary"
+    commit_author:
+      name: amberpixels
+      email: amber.pixels.io@gmail.com
+    caveats: |
+      ele wraps pg_restore, which is NOT installed by this cask.
+      Make sure pg_restore is on your PATH — for example:
+        brew install libpq && brew link --force libpq
+      or install the full server with:
+        brew install postgresql@17

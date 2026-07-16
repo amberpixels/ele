@@ -21,6 +21,9 @@ import (
 	"github.com/amberpixels/ele/internal/render"
 )
 
+// version is set at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	code, err := dispatch(os.Args[1:])
 	if err != nil {
@@ -34,6 +37,10 @@ func dispatch(args []string) (int, error) {
 	case len(args) == 0 || args[0] == "-h" || args[0] == "--help":
 		printUsage(os.Stderr)
 		return 2, nil
+
+	case args[0] == "--version" || args[0] == "-V":
+		fmt.Fprintln(os.Stdout, "ele", version)
+		return 0, nil
 
 	case args[0] == "--plan":
 		if len(args) != 2 {

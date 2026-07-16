@@ -6,3 +6,6 @@ run.log
 *.dump
 /tmp/
 /ele
+
+# goreleaser build output
+/dist/
