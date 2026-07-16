@@ -60,6 +60,15 @@ homebrew_casks:
     commit_author:
       name: amberpixels
       email: amber.pixels.io@gmail.com
+    # The binaries are ad-hoc signed but not notarized, so macOS Gatekeeper
+    # quarantines them on download and kills them on first run. Strip the
+    # quarantine attribute on install so `ele` runs without the scary popup.
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ele"]
+          end
     caveats: |
       ele wraps pg_restore, which is NOT installed by this cask.
       Make sure pg_restore is on your PATH — for example:
