@@ -230,7 +230,82 @@ func TestLiveRepaint(t *testing.T) {
 	if !strings.Contains(out, "line-c") || !strings.Contains(out, "line-d") {
 		t.Error("repaint should contain the new frame")
 	}
+}
 
+// vScreen replays a live block's ANSI (cursor-up, clear-line, newlines, text)
+// onto a virtual screen: row -> current line content. It models exactly what
+// Render emits, so the final map is what the terminal would show.
+func vScreen(out string) map[int]string {
+	screen := map[int]string{}
+	row := 0
+	for i := 0; i < len(out); {
+		switch {
+		case strings.HasPrefix(out[i:], "\x1b["):
+			j := i + 2
+			for j < len(out) && !((out[j] >= 'A' && out[j] <= 'Z') || (out[j] >= 'a' && out[j] <= 'z')) {
+				j++
+			}
+			num := 0
+			for k := i + 2; k < j && out[k] >= '0' && out[k] <= '9'; k++ {
+				num = num*10 + int(out[k]-'0')
+			}
+			switch out[j] {
+			case 'A':
+				row -= num
+			case 'K':
+				screen[row] = "" // clear line
+			}
+			i = j + 1
+		case out[i] == '\n':
+			row++
+			i++
+		case out[i] == '\r':
+			i++
+		default:
+			j := i
+			for j < len(out) && out[j] != '\x1b' && out[j] != '\n' && out[j] != '\r' {
+				j++
+			}
+			screen[row] = out[i:j]
+			i = j
+		}
+	}
+	return screen
+}
+
+// TestLiveNoDriftOnHeightChange reproduces the -j bug: the block height
+// oscillates as the working line comes and goes, and the block must repaint in
+// place, never leaving stale copies behind.
+func TestLiveNoDriftOnHeightChange(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLive(&buf)
+	frames := [][]string{
+		{"HEADER", "a", "b", "c"},            // 4
+		{"HEADER", "a", "b", "c", "working"}, // 5: working appears
+		{"HEADER", "a", "b", "c"},            // 4: working gone
+		{"HEADER", "a", "b", "c", "working"}, // 5
+		{"HEADER", "a", "b", "c"},            // 4
+		{"HEADER", "a", "b", "c", "working"}, // 5
+	}
+	for _, f := range frames {
+		l.Render(f)
+	}
+	screen := vScreen(buf.String())
+	headers := 0
+	for _, line := range screen {
+		if line == "HEADER" {
+			headers++
+		}
+	}
+	if headers != 1 {
+		t.Errorf("block drifted: %d HEADER lines on screen, want 1 (stale copies stacked)", headers)
+	}
+}
+
+func TestLiveClose(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLive(&buf)
+	l.Render([]string{"x"})
 	l.Close()
 	if !strings.Contains(buf.String(), ansiShowCursor) {
 		t.Error("Close should restore the cursor")

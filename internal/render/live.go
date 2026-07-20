@@ -46,6 +46,14 @@ func (l *Live) Render(frame []string) {
 		}
 		b.WriteString("\n")
 	}
+	// When this frame is shorter than the last, we cleared the surplus old lines
+	// but the cursor now sits below the new block. Pull it back so it rests
+	// exactly len(frame) lines below the block top; otherwise the next repaint's
+	// cursor-up lands too low and the block drifts down, stacking stale copies
+	// (seen under -j, where the working line appears and vanishes each tick).
+	if extra := n - len(frame); extra > 0 {
+		fmt.Fprintf(&b, "\x1b[%dA", extra)
+	}
 	l.prevLines = len(frame)
 	_, _ = io.WriteString(l.w, b.String())
 }
