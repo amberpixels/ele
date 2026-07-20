@@ -66,7 +66,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 	p := parser.New()
 	var mu sync.Mutex
 
-	live, stopTicker := startRenderer(stderrFile, agg, &mu, render.Opts{
+	start := time.Now()
+	live, stopTicker := startRenderer(stderrFile, agg, &mu, start, render.Opts{
 		Width:   render.Width(stderrFile),
 		Title:   f.dbName,
 		LogPath: logPath,
@@ -76,7 +77,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 		defer live.Close() // restore the cursor even on panic; idempotent
 	}
 
-	start := time.Now()
 	result, runErr := runner.Run(ctx, runner.Options{
 		Args:   args,
 		Stdout: stdout,
@@ -96,6 +96,12 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 	for _, ev := range p.Flush() {
 		agg.Feed(ev)
 	}
+	// A normal exit (even a failing code) means pg_restore processed every item
+	// it was going to; the phase remainder is skipped, not pending. A signal kill
+	// leaves the rest genuinely incomplete, so don't claim the phases finished.
+	if result != nil && !result.Signaled {
+		agg.Finish()
+	}
 	snap := agg.Snapshot()
 	mu.Unlock()
 
@@ -107,14 +113,14 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 		fmt.Fprintf(stderrFile, "ele: %v\n", runErr)
 	}
 
-	render.Summary(stderrFile, snap, logPath, elapsed)
+	render.Summary(stderrFile, snap, logPath, elapsed, render.Width(stderrFile))
 	return exitCode(result, snap, stderrFile), nil
 }
 
 // startRenderer starts the progress loop: a live repaint block on a TTY, or
 // periodic one-line milestones when output is plain. It returns the Live writer
 // (nil in plain mode) and a stop function that halts the ticker.
-func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mutex, opt render.Opts) (*render.Live, func()) {
+func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mutex, start time.Time, opt render.Opts) (*render.Live, func()) {
 	done := make(chan struct{})
 	var wg sync.WaitGroup
 
@@ -131,7 +137,7 @@ func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mut
 					mu.Lock()
 					snap := agg.Snapshot()
 					mu.Unlock()
-					pp.Update(snap)
+					pp.Update(snap, time.Since(start))
 				}
 			}
 		})
@@ -151,6 +157,7 @@ func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mut
 				snap := agg.Snapshot()
 				mu.Unlock()
 				opt.Spinner = spinner[i%len(spinner)]
+				opt.Elapsed = time.Since(start)
 				live.Render(render.Frame(snap, opt))
 			}
 		}

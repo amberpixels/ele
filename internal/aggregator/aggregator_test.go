@@ -169,6 +169,134 @@ func TestTimingAndInFlight(t *testing.T) {
 	}
 }
 
+func TestWorkingSerial(t *testing.T) {
+	base := time.Unix(1_000_000, 0)
+	clock := base
+	a := New(loadPlan(t), Config{})
+	a.now = func() time.Time { return clock }
+
+	// No activity yet: nothing to show on the working line.
+	if s := a.Snapshot(); len(s.Working) != 0 {
+		t.Fatalf("working = %+v before any event, want empty", s.Working)
+	}
+
+	// A serial data load starts; 30s later it's still the current item.
+	a.Feed(parser.Event{Kind: parser.KindProcessingData, Name: "public.activity_logs"})
+	clock = base.Add(30 * time.Second)
+
+	s := a.Snapshot()
+	if len(s.Working) != 1 {
+		t.Fatalf("working = %+v, want one current item", s.Working)
+	}
+	if w := s.Working[0]; w.Name != "public.activity_logs" || w.Desc != "TABLE DATA" || w.Elapsed != 30*time.Second {
+		t.Errorf("current item = %+v, want activity_logs TABLE DATA at 30s", w)
+	}
+
+	// The next item replaces it and its timer restarts.
+	a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "INDEX", Name: "public.idx_logs_ts"})
+	clock = base.Add(31 * time.Second)
+	if w := a.Snapshot().Working[0]; w.Name != "public.idx_logs_ts" || w.Elapsed != time.Second {
+		t.Errorf("current item = %+v, want idx_logs_ts at 1s", w)
+	}
+}
+
+func TestDropWaveCleanup(t *testing.T) {
+	a := New(loadPlan(t), Config{Clean: true})
+
+	// The --clean DROP wave: counted for the cleanup line, moves no phase bar,
+	// and reports Dropping until real restore progress begins.
+	a.Feed(parser.Event{Kind: parser.KindDropping, Desc: "TABLE", Tag: "orders"})
+	a.Feed(parser.Event{Kind: parser.KindDropping, Desc: "INDEX", Tag: "idx_orders"})
+
+	s := a.Snapshot()
+	if s.DropCount != 2 || !s.Dropping {
+		t.Errorf("drop wave = {count %d, dropping %v}, want {2, true}", s.DropCount, s.Dropping)
+	}
+	if s.Pre.Done != 0 || s.Data.Done != 0 || s.Post.Done != 0 {
+		t.Errorf("drops must not advance a phase bar: %+v", s)
+	}
+	if len(s.Working) != 0 {
+		t.Errorf("drops must not appear on the working line: %+v", s.Working)
+	}
+
+	// A create ends the wave: Dropping clears, but the count is retained.
+	a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "TABLE", Name: "public.orders"})
+	if s := a.Snapshot(); s.Dropping || s.DropCount != 2 {
+		t.Errorf("after first create: dropping=%v count=%d, want false/2", s.Dropping, s.DropCount)
+	}
+}
+
+// TestPhaseSkippedOnFinish: a phase that pg_restore left short reads as complete
+// with the remainder reported as skipped once the run finishes.
+func TestPhaseSkippedOnFinish(t *testing.T) {
+	plan := loadPlan(t)
+	pre, _, _, _ := plan.PhaseCounts()
+	a := New(plan, Config{})
+
+	// Complete all but the last pre-data entry, then finish the run.
+	for i := 0; i < pre-1; i++ {
+		a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "TABLE", Name: "t"})
+	}
+	if s := a.Snapshot(); s.Pre.Complete {
+		t.Errorf("pre-data marked complete before finish: %+v", s.Pre)
+	}
+	a.Finish()
+
+	s := a.Snapshot()
+	if !s.Pre.Complete || s.Pre.Skipped != 1 || s.Pre.Done != pre-1 {
+		t.Errorf("pre = %+v, want complete with 1 skipped and done=%d", s.Pre, pre-1)
+	}
+}
+
+// TestEarlyPostDataDoesNotCompletePreData guards the COMMENT gotcha: COMMENT
+// entries are post-data but pg_restore emits them among the early creates, so
+// they must not mark pre-data finished - only a genuine data event does.
+func TestEarlyPostDataDoesNotCompletePreData(t *testing.T) {
+	if toc.SectionOf("COMMENT") != toc.PostData {
+		t.Skip("COMMENT not classified post-data in this build")
+	}
+	a := New(loadPlan(t), Config{})
+	a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "TABLE", Name: "t"})   // pre-data
+	a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "COMMENT", Name: "c"}) // post-data, emitted early
+	if s := a.Snapshot(); s.Pre.Complete {
+		t.Errorf("an early post-data COMMENT wrongly completed pre-data: %+v", s.Pre)
+	}
+}
+
+// TestSerialWatermarkCompletesEarlierPhases: in serial mode, seeing a later
+// section's item marks earlier sections complete mid-run (their remainder
+// skipped), without waiting for Finish.
+func TestSerialWatermarkCompletesEarlierPhases(t *testing.T) {
+	a := New(loadPlan(t), Config{})
+	a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "TABLE", Name: "t"}) // pre-data
+	a.Feed(parser.Event{Kind: parser.KindProcessingData, Name: "public.t"})   // data starts
+	s := a.Snapshot()
+	if !s.Pre.Complete {
+		t.Errorf("pre-data should be complete once data starts: %+v", s.Pre)
+	}
+	if s.Data.Complete {
+		t.Errorf("data should still be in progress: %+v", s.Data)
+	}
+}
+
+func TestWorkingParallelMirrorsInFlight(t *testing.T) {
+	base := time.Unix(1_000_000, 0)
+	clock := base
+	a := New(loadPlan(t), Config{})
+	a.now = func() time.Time { return clock }
+
+	a.Feed(parser.Event{Kind: parser.KindLaunchItem, DumpID: 3864, Desc: "TABLE DATA", Tag: "authors"})
+	clock = base.Add(3 * time.Second)
+	a.Feed(parser.Event{Kind: parser.KindLaunchItem, DumpID: 3866, Desc: "TABLE DATA", Tag: "books"})
+	clock = base.Add(4 * time.Second)
+
+	s := a.Snapshot()
+	// Working mirrors the inflight set, longest-running first (authors, 4s).
+	if len(s.Working) != 2 || s.Working[0].Name != "authors" || s.Working[0].Elapsed != 4*time.Second {
+		t.Errorf("working = %+v, want authors first at 4s", s.Working)
+	}
+}
+
 func TestFingerprint(t *testing.T) {
 	tmpl, params := fingerprint(`could not execute query: ERROR:  relation "public.books" does not exist`)
 	if want := `could not execute query: ERROR:  relation "…" does not exist`; tmpl != want {

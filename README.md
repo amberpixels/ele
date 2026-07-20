@@ -78,12 +78,28 @@ exit and shows in red.
 
 ```sh
 ele <pg_restore args>       # run a restore live (the drop-in wrapper)
-ele --plan <dump>           # print the parsed plan and exit; touches no database
-ele --replay <dump> <log>   # replay a captured stderr log and print the summary
+ele --plan <plan>           # print the parsed plan and exit; touches no database
+ele --replay <plan> <log>   # replay a captured stderr log through the live view
 ```
 
-`--plan` and `--replay` are offline: they read the dump (and a log) without
-connecting to any database.
+`--plan` and `--replay` are offline: they never connect to a database. For both,
+`<plan>` is either a dump or a saved `pg_restore -l` listing (see below).
+
+`--replay` is the safe dry-run. Feed it a captured stderr log and a plan, and it
+reruns the whole pipeline: on a terminal it drives the real live block (progress,
+the current-object line, spinner, error panel) paced over a few seconds, then
+prints the summary; elsewhere it prints the summary alone. The exit code reflects
+the log's verdict, so it also answers "was that restore actually clean?".
+
+Saving the listing once lets you dry-run (or re-`--plan`) without the dump on hand:
+
+```sh
+pg_restore -l latest.dump > latest.toc      # capture the plan once (no database)
+ele --replay latest.toc ele-20260719.log    # replay any captured log against it
+```
+
+Tune the animation length with `ELE_REPLAY_SECONDS` (default 12; `0` feeds
+instantly and just prints the summary).
 
 ## How It Works
 

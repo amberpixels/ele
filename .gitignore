@@ -7,5 +7,10 @@ run.log
 /tmp/
 /ele
 
+# saved `pg_restore -l` plan listings (contain real object names — never commit).
+# Root-scoped so committed test fixtures under internal/**/testdata are unaffected.
+/*.toc
+/*.loc
+
 # goreleaser build output
 /dist/

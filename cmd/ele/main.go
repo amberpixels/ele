@@ -8,17 +8,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/amberpixels/ele/internal/aggregator"
 	"github.com/amberpixels/ele/internal/engine"
-	"github.com/amberpixels/ele/internal/parser"
+	"github.com/amberpixels/ele/internal/humanize"
 	"github.com/amberpixels/ele/internal/preflight"
-	"github.com/amberpixels/ele/internal/render"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -54,7 +51,7 @@ func dispatch(args []string) (int, error) {
 			printUsage(os.Stderr)
 			return 2, nil
 		}
-		return fail(replay(os.Stdout, args[1], args[2]))
+		return engine.Replay(context.Background(), args[1], args[2], os.Stdout, os.Stderr)
 
 	default:
 		return engine.Run(context.Background(), args, os.Stdout, os.Stderr)
@@ -72,8 +69,10 @@ func fail(err error) (int, error) {
 func printUsage(w io.Writer) {
 	fmt.Fprint(w, "usage:\n"+
 		"  ele <pg_restore args>       run a restore live (drop-in pg_restore wrapper)\n"+
-		"  ele --plan <dump>           print the parsed restore plan and exit\n"+
-		"  ele --replay <dump> <log>   replay a captured stderr log and print the summary\n")
+		"  ele --plan <plan>           print the parsed restore plan and exit\n"+
+		"  ele --replay <plan> <log>   dry-run: replay a captured stderr log through the\n"+
+		"                              live view\n"+
+		"                              (<plan> is a dump or a saved pg_restore -l listing)\n")
 }
 
 func preflightOnly(out io.Writer, dumpPath string) error {
@@ -82,35 +81,6 @@ func preflightOnly(out io.Writer, dumpPath string) error {
 		return err
 	}
 	printPlan(out, res)
-	return nil
-}
-
-// replay runs preflight for the plan, then feeds a captured stderr log through
-// the parser and aggregator and prints the summary. It touches no database.
-func replay(out io.Writer, dumpPath, logPath string) error {
-	res, err := preflight.Run(context.Background(), dumpPath)
-	if err != nil {
-		return err
-	}
-	f, err := os.Open(logPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	agg := aggregator.New(res.Plan, aggregator.Config{Clean: true, NoOwner: true})
-	p := parser.New()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		for _, ev := range p.Feed(sc.Text()) {
-			agg.Feed(ev)
-		}
-	}
-	for _, ev := range p.Flush() {
-		agg.Feed(ev)
-	}
-	render.Summary(out, agg.Snapshot(), logPath, 0)
 	return nil
 }
 
@@ -123,7 +93,7 @@ func printPlan(out io.Writer, res *preflight.Result) {
 
 	fmt.Fprintf(out, "  pre-data   %d\n", pre)
 	if res.ByteSized {
-		fmt.Fprintf(out, "  data       %d  (%s)\n", data, humanBytes(plan.DataBytes()))
+		fmt.Fprintf(out, "  data       %d  (%s)\n", data, humanize.Bytes(plan.DataBytes()))
 	} else {
 		fmt.Fprintf(out, "  data       %d\n", data)
 	}
@@ -131,18 +101,4 @@ func printPlan(out io.Writer, res *preflight.Result) {
 	if unknown > 0 {
 		fmt.Fprintf(out, "  unknown    %d\n", unknown)
 	}
-}
-
-// humanBytes renders a byte count as a short human-readable string.
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }

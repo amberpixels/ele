@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amberpixels/ele/internal/aggregator"
 )
@@ -57,32 +58,105 @@ func TestFrameDataBytes(t *testing.T) {
 	}
 }
 
-func TestFrameInFlight(t *testing.T) {
+func TestFrameWorking(t *testing.T) {
 	s := sample()
-	s.InFlight = []aggregator.InFlightItem{
-		{Tag: "big_table"}, {Tag: "other"}, {Tag: "third"}, {Tag: "fourth"},
+	s.Working = []aggregator.WorkItem{
+		{Desc: "TABLE DATA", Name: "big_table", Elapsed: 72 * time.Second},
+		{Name: "other"}, {Name: "third"}, {Name: "fourth"},
 	}
 	out := joined(Frame(s, Opts{Spinner: '⣾'}))
-	if !strings.Contains(out, "big_table") || !strings.Contains(out, "+1 in flight") {
-		t.Errorf("in-flight line wrong:\n%s", out)
+	if !strings.Contains(out, "working") || !strings.Contains(out, "big_table") {
+		t.Errorf("working line missing object:\n%s", out)
+	}
+	if !strings.Contains(out, "+3 more") {
+		t.Errorf("working line missing overflow count:\n%s", out)
+	}
+	if !strings.Contains(out, "1:12") { // 72s -> M:SS
+		t.Errorf("working line missing item timer:\n%s", out)
+	}
+}
+
+// TestFrameCleanupAboveBars: while the DROP wave runs, the cleanup row renders
+// just above the section bars.
+func TestFrameCleanupAboveBars(t *testing.T) {
+	s := aggregator.Snapshot{Pre: aggregator.PhaseProgress{Total: 1017}, DropCount: 1439, Dropping: true}
+	frame := Frame(s, Opts{Width: 100, Title: "db", Spinner: '⠧', LogPath: "run.log"})
+	ci, pi := -1, -1
+	for i, l := range frame {
+		if strings.HasPrefix(l, "  cleanup") {
+			ci = i
+		}
+		if strings.HasPrefix(l, "  pre-data") {
+			pi = i
+		}
+	}
+	if ci < 0 || pi < 0 || ci >= pi {
+		t.Errorf("cleanup should render just above pre-data (cleanup=%d pre-data=%d):\n%s", ci, pi, strings.Join(frame, "\n"))
+	}
+}
+
+// TestSummarySkippedNoteAtBottom: the full-width skipped explanation goes at the
+// very bottom, after the bars and errors, so it doesn't push the bars down.
+func TestSummarySkippedNoteAtBottom(t *testing.T) {
+	var buf bytes.Buffer
+	s := sample()
+	s.Pre = aggregator.PhaseProgress{Done: 1009, Total: 1017, Complete: true, Skipped: 8}
+	Summary(&buf, s, "run.log", 0, 100)
+	out := buf.String()
+	note := strings.Index(out, "planned object(s) were not restored")
+	bars := strings.Index(out, "pre-data")
+	errs := strings.Index(out, "errors ")
+	if note < 0 {
+		t.Fatal("skipped note missing")
+	}
+	if note < bars || note < errs {
+		t.Errorf("skipped note should be at the bottom (note=%d bars=%d errors=%d)", note, bars, errs)
+	}
+}
+
+func TestFrameHeaderElapsed(t *testing.T) {
+	out := joined(Frame(sample(), Opts{Title: "db", Elapsed: 4*time.Minute + 12*time.Second}))
+	if !strings.Contains(out, "Restoring db") || !strings.Contains(out, "4:12") {
+		t.Errorf("header elapsed missing:\n%s", out)
 	}
 }
 
 func TestFrameGroupCap(t *testing.T) {
 	s := sample()
-	// Seven groups, but only maxGroups (5) are listed.
+	// Seven groups, but only maxGroups (5) are listed, with a folded-count note.
 	s.Errors = nil
 	for range 7 {
 		s.Errors = append(s.Errors, aggregator.ErrorGroup{Template: "e", Count: 1, Benign: true})
 	}
-	shown := 0
-	for _, l := range Frame(s, Opts{}) {
-		if strings.Contains(l, "benign  e  ×1") {
-			shown++
+	out := joined(Frame(s, Opts{}))
+	if shown := strings.Count(out, "benign  e  ×1"); shown != maxGroups {
+		t.Errorf("listed %d groups, want %d", shown, maxGroups)
+	}
+	if !strings.Contains(out, "2 more benign groups") { // 7 - 5 hidden
+		t.Errorf("missing folded-count note:\n%s", out)
+	}
+}
+
+// TestCapGroupsKeepsRealErrors: a real group must never be folded away, even
+// when the benign groups alone would fill the limit.
+func TestCapGroupsKeepsRealErrors(t *testing.T) {
+	var errs []aggregator.ErrorGroup
+	errs = append(errs, aggregator.ErrorGroup{Template: "boom", Count: 1}) // real, sorted first
+	for range 12 {
+		errs = append(errs, aggregator.ErrorGroup{Template: "noise", Count: 1, Benign: true})
+	}
+	shown, hidden := capGroups(errs, 5)
+	if hidden == 0 {
+		t.Fatal("expected some benign groups to be hidden")
+	}
+	sawReal := false
+	for _, g := range shown {
+		if !g.Benign {
+			sawReal = true
 		}
 	}
-	if shown != maxGroups {
-		t.Errorf("listed %d groups, want %d", shown, maxGroups)
+	if !sawReal {
+		t.Error("real group was hidden by the cap")
 	}
 }
 
@@ -97,7 +171,7 @@ func TestFrameTruncatesToWidth(t *testing.T) {
 
 func TestSummaryOutcome(t *testing.T) {
 	var buf bytes.Buffer
-	Summary(&buf, sample(), "run.log", 0)
+	Summary(&buf, sample(), "run.log", 0, 100)
 	out := buf.String()
 	if !strings.Contains(out, "success - 1909 benign error(s) normalized to exit 0") {
 		t.Errorf("outcome wrong:\n%s", out)
@@ -106,7 +180,7 @@ func TestSummaryOutcome(t *testing.T) {
 	buf.Reset()
 	s := sample()
 	s.ErrReal = 2
-	Summary(&buf, s, "", 0)
+	Summary(&buf, s, "", 0, 100)
 	if !strings.Contains(buf.String(), "completed with 2 real error(s)") {
 		t.Errorf("real-error outcome wrong:\n%s", buf.String())
 	}
@@ -124,12 +198,12 @@ func TestPlainProgress(t *testing.T) {
 		}
 	}
 
-	pp.Update(snap(0, 0, 0))    // first tick -> emits
-	pp.Update(snap(50, 0, 0))   // no milestone (pre incomplete, deciles unchanged)
-	pp.Update(snap(100, 0, 0))  // pre completes -> emits
-	pp.Update(snap(100, 10, 0)) // data crosses 10% -> emits
-	pp.Update(snap(100, 15, 0)) // same decile -> silent
-	pp.Update(snap(100, 20, 0)) // data crosses 20% -> emits
+	pp.Update(snap(0, 0, 0), 0)    // first tick -> emits
+	pp.Update(snap(50, 0, 0), 0)   // no milestone (pre incomplete, deciles unchanged)
+	pp.Update(snap(100, 0, 0), 0)  // pre completes -> emits
+	pp.Update(snap(100, 10, 0), 0) // data crosses 10% -> emits
+	pp.Update(snap(100, 15, 0), 0) // same decile -> silent
+	pp.Update(snap(100, 20, 0), 0) // data crosses 20% -> emits
 
 	out := buf.String()
 	if n := strings.Count(out, "\n"); n != 4 {

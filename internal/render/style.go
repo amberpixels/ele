@@ -19,6 +19,8 @@ type Styles struct {
 	dim     lipgloss.Style // secondary text (log path, slowest)
 	success lipgloss.Style // success outcome
 	fail    lipgloss.Style // failure outcome
+	skipped lipgloss.Style // "N skipped" phase annotation
+	timer   lipgloss.Style // elapsed clock and current-item timer
 }
 
 // brand colors, matching the logo's teal/indigo family.
@@ -27,6 +29,8 @@ var (
 	colGreen = lipgloss.Color("#22C55E")
 	colRed   = lipgloss.Color("#EF4444")
 	colGray  = lipgloss.Color("#6B7280")
+	colAmber = lipgloss.Color("#F59E0B")
+	colPink  = lipgloss.Color("#F472B6")
 )
 
 // NewStyles builds styles targeting w, detecting its color profile via lipgloss
@@ -43,6 +47,8 @@ func NewStyles(w io.Writer) *Styles {
 		dim:     s().Faint(true),
 		success: s().Foreground(colGreen).Bold(true),
 		fail:    s().Foreground(colRed).Bold(true),
+		skipped: s().Foreground(colAmber),
+		timer:   s().Foreground(colPink),
 	}
 }
 
