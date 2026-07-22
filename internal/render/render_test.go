@@ -137,6 +137,37 @@ func TestFrameGroupCap(t *testing.T) {
 	}
 }
 
+// TestFrameFitsMaxLines: the block must stay inside the height it's given - it
+// is repainted by moving the cursor back over it, and a block taller than the
+// screen drifts down instead, stranding its top line on every repaint. The
+// error panel is what gives way, so the bars survive even at absurd heights.
+func TestFrameFitsMaxLines(t *testing.T) {
+	s := sample()
+	s.Errors = nil
+	for range 7 {
+		s.Errors = append(s.Errors, aggregator.ErrorGroup{Template: "e", Count: 1, Benign: true})
+	}
+	// wantNote: folding is announced whenever the budget still has a row to
+	// announce it in; below that only the counter line survives, and it carries
+	// the full totals anyway.
+	for _, tc := range []struct {
+		maxLines int
+		wantNote bool
+	}{{20, true}, {13, true}, {12, true}, {9, true}, {8, false}, {5, false}, {1, false}} {
+		frame := Frame(s, Opts{Width: 100, MaxLines: tc.maxLines, Title: "db", LogPath: "run.log"})
+		out := joined(frame)
+		if len(frame) > tc.maxLines {
+			t.Errorf("MaxLines=%d: frame is %d lines:\n%s", tc.maxLines, len(frame), out)
+		}
+		if tc.maxLines >= 5 && !strings.Contains(out, "post-data") {
+			t.Errorf("MaxLines=%d: dropped a phase bar before the error panel:\n%s", tc.maxLines, out)
+		}
+		if got := strings.Contains(out, "more benign group"); got != tc.wantNote {
+			t.Errorf("MaxLines=%d: folded-count note present=%v, want %v:\n%s", tc.maxLines, got, tc.wantNote, out)
+		}
+	}
+}
+
 // TestCapGroupsKeepsRealErrors: a real group must never be folded away, even
 // when the benign groups alone would fill the limit.
 func TestCapGroupsKeepsRealErrors(t *testing.T) {

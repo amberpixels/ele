@@ -60,12 +60,17 @@ const (
 
 // Opts controls a rendered frame.
 type Opts struct {
-	Width   int           // terminal width; lines are truncated to it (0 = no limit)
-	Title   string        // e.g. "throwaway"; omitted when empty
-	LogPath string        // raw-log path shown in the panel; omitted when empty
-	Spinner rune          // in-flight spinner glyph; 0 hides the spinner
-	Elapsed time.Duration // wall time since the restore started; 0 hides it
-	Styles  *Styles       // color styles; nil = plain
+	Width int // terminal width; lines are truncated to it (0 = no limit)
+	// MaxLines caps the block height (0 = no limit). The live block is repainted
+	// by moving the cursor back up over it, which only works while the block is
+	// shorter than the screen - so callers pass the terminal height minus the row
+	// the cursor rests on.
+	MaxLines int
+	Title    string        // e.g. "throwaway"; omitted when empty
+	LogPath  string        // raw-log path shown in the panel; omitted when empty
+	Spinner  rune          // in-flight spinner glyph; 0 hides the spinner
+	Elapsed  time.Duration // wall time since the restore started; 0 hides it
+	Styles   *Styles       // color styles; nil = plain
 }
 
 // Frame renders the live status block. Lines are colored per Opts.Styles and
@@ -106,14 +111,33 @@ func Frame(s aggregator.Snapshot, opt Opts) []string {
 		add("  log        %s", st.dim.Render(opt.LogPath))
 	}
 	add("  errors     %s", errorCounter(st, s))
-	shown, hidden := capGroups(s.Errors, maxGroups)
+	// The error panel is the block's only elastic part, so it absorbs a short
+	// terminal: fewer groups listed, the rest folded into the note (one row is
+	// reserved for it). Overflowing the screen isn't cosmetic - a block that
+	// doesn't fit can't be repainted in place, and every repaint then strands a
+	// copy of the header line in the scrollback.
+	shown, hidden := capGroups(s.Errors, groupLimit(opt.MaxLines, len(lines)))
 	for _, g := range shown {
 		add("             %s", groupLine(st, g))
 	}
 	if hidden > 0 {
 		add("             %s", st.dim.Render(moreGroupsNote(hidden)))
 	}
+	// Last resort for a terminal too short even for the bars: keep the top of the
+	// block, which is the part that carries progress.
+	if opt.MaxLines > 0 && len(lines) > opt.MaxLines {
+		lines = lines[:opt.MaxLines]
+	}
 	return lines
+}
+
+// groupLimit is how many error groups the panel may list: maxGroups, or fewer
+// when the rows already used leave less room in the height budget.
+func groupLimit(maxLines, used int) int {
+	if maxLines <= 0 {
+		return maxGroups
+	}
+	return min(maxGroups, max(maxLines-used-1, 0)) // -1 reserves the "… N more" row
 }
 
 // phaseBar renders "name  ▓▓▓░░░  done/total  pct" with an optional trailing

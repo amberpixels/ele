@@ -68,7 +68,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 
 	start := time.Now()
 	live, stopTicker := startRenderer(stderrFile, agg, &mu, start, render.Opts{
-		Width:   render.Width(stderrFile),
 		Title:   f.dbName,
 		LogPath: logPath,
 		Styles:  render.NewStyles(stderrFile),
@@ -158,11 +157,27 @@ func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mut
 				mu.Unlock()
 				opt.Spinner = spinner[i%len(spinner)]
 				opt.Elapsed = time.Since(start)
+				// Measure every tick: the terminal the block has to fit into is
+				// whatever it is right now, not what it was when the run started.
+				opt.Width, opt.MaxLines = blockSize(stderrFile)
 				live.Render(render.Frame(snap, opt))
 			}
 		}
 	})
 	return live, func() { close(done); wg.Wait() }
+}
+
+// blockSize measures the terminal for the live block: its full width, and a
+// height one row short of the screen. The block is repainted by moving the
+// cursor back up over it, so it has to leave the cursor a row to rest on - a
+// block as tall as the terminal scrolls itself out from under the cursor and
+// drifts down, stranding a copy of its top line on every repaint.
+func blockSize(stderrFile *os.File) (width, maxLines int) {
+	w, h := render.Size(stderrFile)
+	if h > 1 {
+		return w, h - 1
+	}
+	return w, 0
 }
 
 // preflightPlan runs preflight, returning nil (with a note) when it can't.

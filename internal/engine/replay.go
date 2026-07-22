@@ -45,7 +45,6 @@ func Replay(ctx context.Context, planSource, logPath string, stdout io.Writer, s
 
 	start := time.Now()
 	live, stopTicker := startRenderer(stderrFile, agg, &mu, start, render.Opts{
-		Width:   render.Width(stderrFile),
 		Title:   "(replay) " + logPath,
 		LogPath: logPath,
 		Styles:  render.NewStyles(stderrFile),
