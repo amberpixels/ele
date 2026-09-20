@@ -26,9 +26,9 @@ func Summary(w io.Writer, s aggregator.Snapshot, logPath string, elapsed time.Du
 	if cl := cleanupLine(st, s, 0); cl != "" {
 		fmt.Fprintf(w, "  %-10s %s\n", "cleanup", cl)
 	}
-	fmt.Fprintf(w, "  %s\n", phaseBar(st, "pre-data", fillPre, s.Pre, ""))
-	fmt.Fprintf(w, "  %s\n", phaseBar(st, "data", fillData, s.Data, dataNote(s)))
-	fmt.Fprintf(w, "  %s\n", phaseBar(st, "post-data", fillPost, s.Post, ""))
+	for _, row := range phaseRows(st, s) {
+		fmt.Fprintf(w, "  %s\n", row)
+	}
 
 	if logPath != "" {
 		fmt.Fprintf(w, "\n  raw log    %s\n", st.dim.Render(logPath))

@@ -94,9 +94,9 @@ func Frame(s aggregator.Snapshot, opt Opts) []string {
 	if cl := cleanupLine(st, s, opt.Spinner); cl != "" {
 		add("  %-10s %s", "cleanup", cl)
 	}
-	add("  %s", phaseBar(st, "pre-data", fillPre, s.Pre, ""))
-	add("  %s", phaseBar(st, "data", fillData, s.Data, dataNote(s)))
-	add("  %s", phaseBar(st, "post-data", fillPost, s.Post, ""))
+	for _, row := range phaseRows(st, s) {
+		add("  %s", row)
+	}
 	// The working line sits below all three bars: under -j, data and post-data
 	// items run concurrently, so it reflects current activity across the restore.
 	// Its spinner and live timer are what tell a long single item apart from a hang.
@@ -138,6 +138,46 @@ func groupLimit(maxLines, used int) int {
 		return maxGroups
 	}
 	return min(maxGroups, max(maxLines-used-1, 0)) // -1 reserves the "… N more" row
+}
+
+// phaseRows renders the three phase rows: bars when preflight supplied
+// denominators, bare counts when it couldn't (countless mode). Frame and
+// Summary share it so the block appears to freeze in place at the end of a run
+// rather than change shape.
+func phaseRows(st *Styles, s aggregator.Snapshot) []string {
+	if s.Countless {
+		return []string{
+			phaseCount(st, "pre-data", s.Pre),
+			phaseCount(st, "data", s.Data),
+			phaseCount(st, "post-data", s.Post),
+		}
+	}
+	return []string{
+		phaseBar(st, "pre-data", fillPre, s.Pre, ""),
+		phaseBar(st, "data", fillData, s.Data, dataNote(s)),
+		phaseBar(st, "post-data", fillPost, s.Post, ""),
+	}
+}
+
+// phaseCount renders a phase with no denominator to draw against: the running
+// object count where the bar would be, and nothing that implies a fraction. The
+// count sits in the bar's own column so the three rows stay aligned with each
+// other and with the cleanup row above them.
+func phaseCount(st *Styles, name string, p aggregator.PhaseProgress) string {
+	count := fmt.Sprintf("%d %s", p.Done, objectWord(p.Done))
+	line := fmt.Sprintf("%-10s %s", name, count)
+	if !p.Complete {
+		return line
+	}
+	pad := max(barWidth-ansi.StringWidth(count), 1)
+	return line + strings.Repeat(" ", pad) + "  " + st.done.Render("done")
+}
+
+func objectWord(n int) string {
+	if n == 1 {
+		return "object"
+	}
+	return "objects"
 }
 
 // phaseBar renders "name  ▓▓▓░░░  done/total  pct" with an optional trailing

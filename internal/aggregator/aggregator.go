@@ -26,6 +26,11 @@ type Aggregator struct {
 	cfg  Config
 	now  func() time.Time // injectable clock for item timing
 
+	// countless: no plan, so no denominators. Phases are still counted - the
+	// event's own description gives the section - they just have no total to
+	// count against. This is the stdin restore, where preflight is impossible.
+	countless bool
+
 	// phase denominators, from the plan
 	total map[toc.Section]int
 	// phase progress
@@ -70,31 +75,35 @@ type inflightItem struct {
 	start     time.Time
 }
 
-// New builds an Aggregator for a restore plan and config.
+// New builds an Aggregator for a restore plan and config. A nil plan is the
+// countless restore: everything still aggregates, only the denominators are
+// missing.
 func New(plan *toc.RestorePlan, cfg Config) *Aggregator {
-	pre, data, post, _ := plan.PhaseCounts()
-	bytesTotal, byteSized := plan.DataBytes(), false
-	// DataBytes is only meaningful when preflight sized every data file; the
-	// caller signals that via a nonzero total together with ByteSized. Here we
-	// treat any positive total as byte-capable and let the renderer decide.
-	if bytesTotal > 0 {
-		byteSized = true
-	}
-	return &Aggregator{
-		plan: plan,
-		cfg:  cfg,
-		now:  time.Now,
-		total: map[toc.Section]int{
-			toc.PreData: pre, toc.Data: data, toc.PostData: post,
-		},
+	a := &Aggregator{
+		plan:        plan,
+		cfg:         cfg,
+		now:         time.Now,
+		countless:   plan == nil,
+		total:       map[toc.Section]int{},
 		done:        map[toc.Section]int{},
 		sectionDone: map[toc.Section]bool{},
 		doneIDs:     map[int]bool{},
-		bytesTotal:  bytesTotal,
-		byteSized:   byteSized,
 		inflight:    map[int]*inflightItem{},
 		groups:      map[string]*errorGroup{},
 	}
+	if plan == nil {
+		return a
+	}
+
+	pre, data, post, _ := plan.PhaseCounts()
+	a.total = map[toc.Section]int{toc.PreData: pre, toc.Data: data, toc.PostData: post}
+	// DataBytes is only meaningful when preflight sized every data file; the
+	// caller signals that via a nonzero total together with ByteSized. Here we
+	// treat any positive total as byte-capable and let the renderer decide.
+	if bytesTotal := plan.DataBytes(); bytesTotal > 0 {
+		a.bytesTotal, a.byteSized = bytesTotal, true
+	}
+	return a
 }
 
 // Feed folds one event into the running state.
@@ -102,7 +111,7 @@ func (a *Aggregator) Feed(ev parser.Event) {
 	switch ev.Kind {
 	case parser.KindProcessingItem:
 		a.parallel = true
-		a.completeID(ev.DumpID)
+		a.completeID(ev.DumpID, ev.Desc)
 
 	case parser.KindLaunchItem:
 		a.parallel = true
@@ -116,7 +125,7 @@ func (a *Aggregator) Feed(ev parser.Event) {
 			})
 			delete(a.inflight, ev.DumpID)
 		}
-		a.completeID(ev.DumpID)
+		a.completeID(ev.DumpID, ev.Desc)
 
 	case parser.KindCreating:
 		if !a.parallel {
@@ -152,20 +161,35 @@ func (a *Aggregator) Feed(ev parser.Event) {
 }
 
 // completeID marks the entry with the given dump id done, once. Its phase and
-// byte size come from the plan. Ids not in the plan are ignored.
-func (a *Aggregator) completeID(id int) {
+// byte size come from the plan; ids the plan doesn't know are ignored, since a
+// real plan is the authority on what this restore contains.
+//
+// Countless mode has no plan to consult, so the event's own description carries
+// the phase instead - toc.SectionOf maps it exactly the way the plan would have.
+// Sizes stay unknown either way: only preflight can stat a data file.
+func (a *Aggregator) completeID(id int, desc string) {
 	if a.doneIDs[id] {
 		return
 	}
-	e, ok := a.plan.Get(id)
-	if !ok {
+	if a.plan != nil {
+		e, ok := a.plan.Get(id)
+		if !ok {
+			return
+		}
+		a.doneIDs[id] = true
+		a.incPhase(e.Section)
+		if e.Section == toc.Data && e.HasBytes {
+			a.bytesDone += e.Bytes
+		}
+		return
+	}
+
+	s := toc.SectionOf(desc)
+	if s == toc.SectionUnknown {
 		return
 	}
 	a.doneIDs[id] = true
-	a.incPhase(e.Section)
-	if e.Section == toc.Data && e.HasBytes {
-		a.bytesDone += e.Bytes
-	}
+	a.incPhase(s)
 }
 
 // completeSerial advances a phase in serial mode, where events carry no dump id
@@ -204,10 +228,11 @@ func (a *Aggregator) setCurrent(desc, name string) {
 
 // incPhase increments a phase's done count, capped at its total so a stray
 // double-count can never push a bar past 100%. The first real completion also
-// ends the DROP wave.
+// ends the DROP wave. Countless mode has no total to cap against - and nothing
+// to overflow, since it draws counts rather than bars.
 func (a *Aggregator) incPhase(s toc.Section) {
 	a.dropWaveOver = true
-	if a.done[s] < a.total[s] {
+	if a.countless || a.done[s] < a.total[s] {
 		a.done[s]++
 	}
 }

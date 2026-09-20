@@ -59,6 +59,11 @@ type Snapshot struct {
 	Data PhaseProgress
 	Post PhaseProgress
 
+	// Countless: the restore ran without a plan (a dump on stdin), so every
+	// Total is 0 and the phases carry counts only. The renderer drops the bars
+	// rather than drawing three empty tracks.
+	Countless bool
+
 	ByteSized  bool
 	BytesDone  int64
 	BytesTotal int64
@@ -101,6 +106,7 @@ func (a *Aggregator) Snapshot() Snapshot {
 		Pre:        a.phase(toc.PreData),
 		Data:       a.phase(toc.Data),
 		Post:       a.phase(toc.PostData),
+		Countless:  a.countless,
 		ByteSized:  a.byteSized,
 		BytesDone:  a.bytesDone,
 		BytesTotal: a.bytesTotal,

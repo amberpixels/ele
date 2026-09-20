@@ -72,7 +72,8 @@ func printUsage(w io.Writer) {
 		"  ele --plan <plan>           print the parsed restore plan and exit\n"+
 		"  ele --replay <plan> <log>   dry-run: replay a captured stderr log through the\n"+
 		"                              live view\n"+
-		"                              (<plan> is a dump or a saved pg_restore -l listing)\n")
+		"                              (<plan> is a dump or a saved pg_restore -l listing;\n"+
+		"                              '-' replays with no plan, as a stdin restore runs)\n")
 }
 
 func preflightOnly(out io.Writer, dumpPath string) error {
