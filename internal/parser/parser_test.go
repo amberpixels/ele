@@ -194,3 +194,42 @@ func TestParallelInterleaving(t *testing.T) {
 		t.Errorf("parsed %d errors, pg_restore reported %d", got, want)
 	}
 }
+
+// TestMessageTableOrder guards the invariant matchMessage depends on and the
+// generator provides: longest literal first, so a specific message can never be
+// shadowed by a shorter one that happens to share its opening words.
+func TestMessageTableOrder(t *testing.T) {
+	for i := 1; i < len(messages); i++ {
+		if len(messages[i-1].literal) < len(messages[i].literal) {
+			t.Fatalf("table out of order at %d: %q before %q - regenerate with `just gen-messages`",
+				i, messages[i-1].literal, messages[i].literal)
+		}
+	}
+
+	// Every literal has to be reachable: a literal that another entry already
+	// matches in full would be dead weight in the scan.
+	for i, m := range messages {
+		if got, _, ok := matchMessage(m.literal); ok && got.literal != m.literal {
+			t.Errorf("entry %d (%q) is shadowed by %q", i, m.literal, got.literal)
+		}
+	}
+}
+
+// TestMessageTableCovers pins the kinds the table is expected to carry, so a
+// regeneration that silently dropped a binding fails here rather than showing
+// up as a stalled progress bar during a restore.
+func TestMessageTableCovers(t *testing.T) {
+	want := []Kind{
+		KindInfo, KindDropping, KindCreating, KindProcessingData,
+		KindProcessingItem, KindLaunchItem, KindFinishItem, KindExecuting,
+	}
+	have := map[Kind]bool{}
+	for _, m := range messages {
+		have[m.kind] = true
+	}
+	for _, k := range want {
+		if !have[k] {
+			t.Errorf("no message maps to %s", k)
+		}
+	}
+}

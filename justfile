@@ -91,6 +91,23 @@ _golangci-install:
 test *ARGS:
     go test {{ARGS}} ./...
 
+# --- Codegen ---
+#
+# The parser's message table comes from PostgreSQL's own pg_dump catalogs, so a
+# new major is a data change: run `gen-messages` when one ships, read the drift
+# summary it prints, and commit what moved.
+
+# Regenerate the message table from upstream release tags - fetches over the network
+[group('gen')]
+gen-messages:
+    go run ./tools/pgmsg
+
+# Regenerate from the committed msgid snapshots; fails if anything moved - immutable
+[group('gen')]
+gen-messages--check:
+    go run ./tools/pgmsg -offline
+    git diff --exit-code internal/parser/messages_gen.go tools/pgmsg/testdata
+
 # --- CI & release ---
 
 # Everything CI runs, in CI's order (build, vet, test) - immutable
