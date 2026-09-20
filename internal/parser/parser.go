@@ -4,6 +4,10 @@
 // locking, which doubles, splits, or drops that prefix mid-line. Lines it can't
 // classify become KindUnknown rather than errors, so wording drift across
 // PostgreSQL versions never breaks the pipeline.
+//
+// The wordings it matches on are not hand-written: messages_gen.go is generated
+// from pg_dump's own gettext catalogs across the supported releases (see
+// tools/pgmsg), and messages.go binds each one to the Event it means.
 package parser
 
 import (
@@ -71,62 +75,58 @@ func (p *Parser) flushErr() []Event {
 	return []Event{ev}
 }
 
-// classify maps a de-prefixed body to an Event. raw is the original line, kept
-// for the KindUnknown fallback. ok is false only for context-only lines that
-// produce no event (e.g. "from TOC entry", "while PROCESSING TOC:").
+// classify maps a de-prefixed body to an Event, matching it against the
+// generated message table (messages_gen.go). raw is the original line, kept for
+// the KindUnknown fallback. ok is false only for context-only lines that produce
+// no event of their own (the "from TOC entry" line).
 func (p *Parser) classify(body, raw string) (Event, bool) {
-	switch {
-	case body == "connecting to database for restore",
-		body == "entering main parallel loop",
-		body == "finished main parallel loop",
-		body == "while PROCESSING TOC:":
-		return Event{Kind: KindInfo, Raw: body}, true
+	// Severity tags are part of the envelope - they come from
+	// src/common/logging.c, not pg_dump's message catalog - so they're matched
+	// here rather than in the generated table.
+	if msg, ok := cut(body, "error: "); ok {
+		ev := Event{Kind: KindError, Message: msg, DumpID: p.pendingCtxID}
+		p.pendingCtxID = 0
+		return ev, true
+	}
+	if msg, ok := cut(body, "warning: "); ok {
+		return Event{Kind: KindWarning, Message: msg}, true
+	}
 
-	case strings.HasPrefix(body, "from TOC entry "):
-		// The remainder is a TOC listing line; reuse the toc parser for its id.
-		if e, ok := toc.ParseListingLine(strings.TrimPrefix(body, "from TOC entry ")); ok {
+	m, args, ok := matchMessage(body)
+	if !ok {
+		return Event{Kind: KindUnknown, Raw: raw}, true
+	}
+
+	switch m.shape {
+	case shapeTOCEntry:
+		// Error context, not an event of its own: the remainder is a TOC
+		// listing line, so reuse the toc parser for its id.
+		if e, ok := toc.ParseListingLine(args); ok {
 			p.pendingCtxID = e.DumpID
 		}
 		return Event{}, false
 
-	case strings.HasPrefix(body, "dropping "):
-		desc, tag := splitDescTag(strings.TrimPrefix(body, "dropping "))
-		return Event{Kind: KindDropping, Desc: desc, Tag: tag}, true
+	case shapeDescTag:
+		desc, tag := splitDescTag(args)
+		return Event{Kind: m.kind, Desc: desc, Tag: tag}, true
 
-	case strings.HasPrefix(body, "creating "):
-		desc, name := splitDescQuoted(strings.TrimPrefix(body, "creating "))
-		return Event{Kind: KindCreating, Desc: desc, Name: name}, true
+	case shapeDescName:
+		desc, name := splitDescTag(args)
+		return Event{Kind: m.kind, Desc: desc, Name: name}, true
 
-	case strings.HasPrefix(body, "processing data for table "):
-		return Event{Kind: KindProcessingData, Name: unquote(strings.TrimPrefix(body, "processing data for table "))}, true
+	case shapeDescQuoted:
+		desc, name := splitDescQuoted(args)
+		return Event{Kind: m.kind, Desc: desc, Name: name}, true
 
-	case strings.HasPrefix(body, "processing item "):
-		id, desc, tag := splitItem(strings.TrimPrefix(body, "processing item "))
-		return Event{Kind: KindProcessingItem, DumpID: id, Desc: desc, Tag: tag}, true
+	case shapeQuotedName:
+		return Event{Kind: m.kind, Name: unquote(args)}, true
 
-	case strings.HasPrefix(body, "launching item "):
-		id, desc, tag := splitItem(strings.TrimPrefix(body, "launching item "))
-		return Event{Kind: KindLaunchItem, DumpID: id, Desc: desc, Tag: tag}, true
+	case shapeItem:
+		id, desc, tag := splitItem(args)
+		return Event{Kind: m.kind, DumpID: id, Desc: desc, Tag: tag}, true
 
-	case strings.HasPrefix(body, "finished item "):
-		id, desc, tag := splitItem(strings.TrimPrefix(body, "finished item "))
-		return Event{Kind: KindFinishItem, DumpID: id, Desc: desc, Tag: tag}, true
-
-	case strings.HasPrefix(body, "executing "):
-		desc, name := splitDescTag(strings.TrimPrefix(body, "executing "))
-		return Event{Kind: KindExecuting, Desc: desc, Name: name}, true
-
-	case strings.HasPrefix(body, "error: "):
-		msg := strings.TrimPrefix(body, "error: ")
-		ev := Event{Kind: KindError, Message: msg, DumpID: p.pendingCtxID}
-		p.pendingCtxID = 0
-		return ev, true
-
-	case strings.HasPrefix(body, "warning: "):
-		return Event{Kind: KindWarning, Message: strings.TrimPrefix(body, "warning: ")}, true
-
-	default:
-		return Event{Kind: KindUnknown, Raw: raw}, true
+	default: // shapeNone: the message is its own meaning
+		return Event{Kind: m.kind, Raw: body}, true
 	}
 }
 
