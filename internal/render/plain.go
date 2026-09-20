@@ -10,20 +10,20 @@ import (
 	"github.com/amberpixels/years"
 )
 
-// PlainProgress emits a one-line status to w at meaningful milestones - each
-// phase completion and every 10% within a phase, or, with no denominators to
-// measure against, every countlessStep objects. It is the degraded-mode
-// substitute for the live repaint block (non-TTY, CI, NO_COLOR, ELE_PLAIN),
-// never the raw firehose. Feed it snapshots on a ticker.
 // countlessStep and countlessInterval pace the line when there are no
 // denominators to hit deciles against: a milestone is every N objects, or every
-// N seconds, whichever lands first. Without them a countless restore would
+// N seconds, whichever comes first. Without them a countless restore would
 // print one line at the start and then nothing for the rest of the run.
 const (
 	countlessStep     = 50
 	countlessInterval = 15 * time.Second
 )
 
+// PlainProgress emits a one-line status to w at meaningful milestones - each
+// phase completion and every 10% within a phase, or, with no denominators to
+// measure against, every countlessStep objects. It is the degraded-mode
+// substitute for the live repaint block (non-TTY, CI, NO_COLOR, ELE_PLAIN),
+// never the raw firehose. Feed it snapshots on a ticker.
 type PlainProgress struct {
 	w  io.Writer
 	st *Styles

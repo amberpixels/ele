@@ -82,17 +82,9 @@ ele --plan <plan>           # print the parsed plan and exit; touches no databas
 ele --replay <plan> <log>   # replay a captured stderr log through the live view
 ```
 
-When the dump arrives on stdin there is nothing to preflight, so there are no
-totals to count against. `ele` runs **countless** rather than falling back to the
-firehose: the same spinner, current-object line, error panel and summary, with
-per-phase object counts where the bars would be.
-
-```sh
-cat latest.dump | ele -d myapp_dev --clean --no-owner
-```
-
 `--plan` and `--replay` are offline: they never connect to a database. For both,
-`<plan>` is either a dump or a saved `pg_restore -l` listing (see below).
+`<plan>` is either a dump or a saved `pg_restore -l` listing (see below);
+`--replay` also takes `-`, meaning no plan at all.
 
 `--replay` is the safe dry-run. Feed it a captured stderr log and a plan, and it
 reruns the whole pipeline: on a terminal it drives the real live block (progress,
@@ -110,6 +102,20 @@ ele --replay - ele-20260719.log             # replay with no plan: the countless
 
 Tune the animation length with `ELE_REPLAY_SECONDS` (default 12; `0` feeds
 instantly and just prints the summary).
+
+### Restoring from stdin
+
+```sh
+cat latest.dump | ele -d myapp_dev --clean --no-owner
+```
+
+Preflight needs a file it can open, so a dump arriving on a pipe has no table of
+contents and no per-phase totals. `ele` still runs the whole view: spinner,
+current-object line, grouped errors, summary and exit code, with a per-phase
+object count in place of each bar. Percentages and the skipped-object count are
+gone, because both need a total.
+
+`ele --replay - <log>` shows the same view offline, against a captured log.
 
 ## How It Works
 
