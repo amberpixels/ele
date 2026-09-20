@@ -30,7 +30,7 @@ happened, not just whether pg_restore was noisy.
 
 > [!NOTE]
 > Pre-1.0. The pipeline works end to end (live wrapper, error classification,
-> exit-code normalization); an honest ETA is still to come.
+> exit-code normalization, stdin restores); an honest ETA is still to come.
 
 ## Install
 
@@ -82,6 +82,15 @@ ele --plan <plan>           # print the parsed plan and exit; touches no databas
 ele --replay <plan> <log>   # replay a captured stderr log through the live view
 ```
 
+When the dump arrives on stdin there is nothing to preflight, so there are no
+totals to count against. `ele` runs **countless** rather than falling back to the
+firehose: the same spinner, current-object line, error panel and summary, with
+per-phase object counts where the bars would be.
+
+```sh
+cat latest.dump | ele -d myapp_dev --clean --no-owner
+```
+
 `--plan` and `--replay` are offline: they never connect to a database. For both,
 `<plan>` is either a dump or a saved `pg_restore -l` listing (see below).
 
@@ -96,6 +105,7 @@ Saving the listing once lets you dry-run (or re-`--plan`) without the dump on ha
 ```sh
 pg_restore -l latest.dump > latest.toc      # capture the plan once (no database)
 ele --replay latest.toc ele-20260719.log    # replay any captured log against it
+ele --replay - ele-20260719.log             # replay with no plan: the countless view
 ```
 
 Tune the animation length with `ELE_REPLAY_SECONDS` (default 12; `0` feeds
@@ -115,7 +125,10 @@ instantly and just prints the summary).
   through untouched.
 - **Parse & aggregate** turn that stream into progress and grouped errors,
   surviving the way parallel (`-j`) workers interleave their output. Errors are
-  fingerprinted (quoted identifiers blanked) and classified benign or real.
+  fingerprinted (quoted identifiers blanked) and classified benign or real. The
+  table of message wordings the parser matches on is generated from PostgreSQL's
+  own `pg_dump` message catalogs (`just gen-messages`), across release tags 13
+  to 18, so a new major is a regeneration rather than a rewrite.
 - **Exit code** is normalized: if every error was benign, `ele` exits `0` with a
   note; any real error exits nonzero. Set `ELE_STRICT_EXIT=1` to keep
   pg_restore's raw code.
@@ -127,12 +140,16 @@ collision with pg_restore's own flag surface.
 
 | Variable | Effect |
 |---|---|
+| `ELE_LOG=path` | Write the raw log here instead of `./ele-<timestamp>.log`. `/dev/null` discards it. |
 | `ELE_STRICT_EXIT=1` | Don't normalize the exit code; return pg_restore's own. |
 | `NO_COLOR=1` | Disable color. |
 | `ELE_PLAIN=1` | Disable the repaint block; emit periodic one-line progress instead. |
+| `ELE_PASSTHROUGH=1` | Don't wrap at all: raw `pg_restore` output and its own exit code. |
 
 `ele` also drops to plain output automatically when stderr isn't a terminal, or
-under `CI` / `CLAUDECODE`.
+under `CI` / `CLAUDECODE`. Plain output is still the aggregated view - a summary
+and periodic progress, never the firehose. `ELE_PASSTHROUGH=1` is the only way
+back to raw `pg_restore`.
 
 ## Feedback
 
