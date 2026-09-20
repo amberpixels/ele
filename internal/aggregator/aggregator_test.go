@@ -30,13 +30,24 @@ func loadPlan(t *testing.T) *toc.RestorePlan {
 // through parser then aggregator, exactly as the runner will wire them.
 func replay(t *testing.T, fixture string, cfg Config) *Aggregator {
 	t.Helper()
+	return feed(t, New(loadPlan(t), cfg), fixture)
+}
+
+// replayCountless drives the same fixture with no plan - the stdin restore,
+// where preflight is impossible and only numerators exist.
+func replayCountless(t *testing.T, fixture string, cfg Config) *Aggregator {
+	t.Helper()
+	return feed(t, New(nil, cfg), fixture)
+}
+
+func feed(t *testing.T, agg *Aggregator, fixture string) *Aggregator {
+	t.Helper()
 	f, err := os.Open(filepath.Join("..", "parser", "testdata", fixture))
 	if err != nil {
 		t.Fatalf("open fixture: %v", err)
 	}
 	defer f.Close()
 
-	agg := New(loadPlan(t), cfg)
 	p := parser.New()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -319,5 +330,62 @@ func TestClassifyBenign(t *testing.T) {
 	// A real failure (unique violation) is never benign.
 	if classifyBenign(`duplicate key value violates unique constraint "x"`, "INSERT ...", true, true) {
 		t.Error("unique violation must be real")
+	}
+}
+
+// TestCountlessSerial is the stdin restore: no plan, so no denominators, but
+// every phase still counts and the error groups are unchanged. Counts come from
+// each event's own object description rather than a TOC lookup.
+func TestCountlessSerial(t *testing.T) {
+	cfg := Config{Clean: true, NoOwner: true}
+	s := replayCountless(t, "clean-serial.stderr", cfg).Snapshot()
+	planned := replay(t, "clean-serial.stderr", cfg).Snapshot()
+
+	if !s.Countless {
+		t.Error("Countless = false, want true for a nil plan")
+	}
+	for _, p := range []PhaseProgress{s.Pre, s.Data, s.Post} {
+		if p.Total != 0 {
+			t.Errorf("%s total = %d, want 0 (no plan to count against)", p.Section, p.Total)
+		}
+		if p.Done == 0 {
+			t.Errorf("%s made no progress", p.Section)
+		}
+	}
+	if s.ByteSized {
+		t.Error("ByteSized = true; only preflight can size data files")
+	}
+
+	// The planned run caps each phase at its denominator, so countless counting
+	// can match it but never fall behind it.
+	if s.Pre.Done < planned.Pre.Done || s.Data.Done < planned.Data.Done || s.Post.Done < planned.Post.Done {
+		t.Errorf("countless %d/%d/%d behind planned %d/%d/%d",
+			s.Pre.Done, s.Data.Done, s.Post.Done,
+			planned.Pre.Done, planned.Data.Done, planned.Post.Done)
+	}
+
+	// Error classification never depended on the plan.
+	if s.ErrTotal != planned.ErrTotal || s.ErrBenign != planned.ErrBenign || s.ErrReal != planned.ErrReal {
+		t.Errorf("errors = %d/%d/%d, want the planned run's %d/%d/%d",
+			s.ErrTotal, s.ErrBenign, s.ErrReal,
+			planned.ErrTotal, planned.ErrBenign, planned.ErrReal)
+	}
+}
+
+// TestCountlessParallel confirms the -j path counts too: item events carry the
+// object description alongside the dump id, so a missing plan costs only the
+// denominators - in-flight tracking and timings are unaffected.
+func TestCountlessParallel(t *testing.T) {
+	agg := replayCountless(t, "clean-j4.stderr", Config{Clean: true, NoOwner: true})
+	s := agg.Snapshot()
+
+	if s.Data.Done == 0 || s.Post.Done == 0 {
+		t.Errorf("data %d, post %d: want both counted", s.Data.Done, s.Post.Done)
+	}
+	if len(s.InFlight) != 0 {
+		t.Errorf("in-flight not drained: %+v", s.InFlight)
+	}
+	if len(s.Slowest) == 0 {
+		t.Error("no item timings; launching/finished pairs should still time")
 	}
 }

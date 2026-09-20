@@ -74,3 +74,31 @@ func TestLoadPlanListing(t *testing.T) {
 		t.Errorf("phase counts = %d/%d/%d, want 15/7/11", pre, data, post)
 	}
 }
+
+// TestReplayCountless is the offline view of a stdin restore: "-" for the plan
+// means no denominators at all. The same log still yields counts, the same
+// benign verdict, and exit 0 - only the bars are gone.
+func TestReplayCountless(t *testing.T) {
+	out, code := runReplay(t, "-", logFixture)
+	if code != 0 {
+		t.Errorf("exit = %d, want 0 (all errors benign)", code)
+	}
+	for _, want := range []string{"success", "21 benign", "objects"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("countless summary missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"15/15", "7/7", "11/11"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("countless summary shows the planned fraction %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+// A nil plan is the contract loadPlan owes Replay for "-", not an error.
+func TestLoadPlanCountless(t *testing.T) {
+	plan, err := loadPlan(context.Background(), "-")
+	if err != nil || plan != nil {
+		t.Errorf("loadPlan(\"-\") = %v, %v; want nil, nil", plan, err)
+	}
+}

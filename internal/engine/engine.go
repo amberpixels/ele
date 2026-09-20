@@ -36,6 +36,12 @@ var spinner = []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
 // code ele should exit with. stdout receives the child's stdout untouched;
 // stderrFile is the terminal channel for the status block and summary.
 func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.File) (int, error) {
+	// ELE_PASSTHROUGH is the opt-out: the user wants pg_restore exactly as it
+	// comes, so it wins over every mode below.
+	if passthroughRequested() {
+		return passthrough(ctx, args, stdout, stderrFile)
+	}
+
 	f := detectFlags(args)
 
 	// Not a restore-to-database (no -d): ele adds nothing, so pass through.
@@ -47,18 +53,21 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 		_, err := os.Stat(p)
 		return err == nil
 	})
+	// No plan (a dump arriving on stdin, or a preflight that failed) means no
+	// denominators - but the aggregation, the working line and the error panel
+	// don't need them. Run countless rather than drop the user back into the
+	// firehose; only ELE_PASSTHROUGH does that.
 	plan := preflightPlan(ctx, dumpPath, stderrFile)
+	title := f.dbName
 	if plan == nil {
-		// No plan means no denominators; fall back to a transparent run rather
-		// than draw meaningless bars.
-		fmt.Fprintln(stderrFile, "ele: no restore plan available; passing through")
-		return passthrough(ctx, args, stdout, stderrFile)
+		fmt.Fprintln(stderrFile, "ele: "+countlessReason(dumpPath)+"; progress runs without totals")
+		title += " (no totals)"
 	}
 
-	logPath := "ele-" + time.Now().Format("20060102-150405") + ".log"
+	logPath := logDestination(time.Now())
 	logf, err := os.Create(logPath)
 	if err != nil {
-		return 1, fmt.Errorf("creating log: %w", err)
+		return 1, fmt.Errorf("creating log %s: %w", logPath, err)
 	}
 	defer logf.Close()
 
@@ -68,7 +77,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 
 	start := time.Now()
 	live, stopTicker := startRenderer(stderrFile, agg, &mu, start, render.Opts{
-		Title:   f.dbName,
+		Title:   title,
 		LogPath: logPath,
 		Styles:  render.NewStyles(stderrFile),
 	})
@@ -180,6 +189,16 @@ func blockSize(stderrFile *os.File) (width, maxLines int) {
 	return w, 0
 }
 
+// countlessReason names why this run has no denominators, for the note printed
+// above the block. A missing dump path is the stdin case the contract calls out;
+// anything else means preflight itself failed, and it already said how.
+func countlessReason(dumpPath string) string {
+	if dumpPath == "" {
+		return "no dump to preflight (restoring from stdin)"
+	}
+	return "preflight produced no plan"
+}
+
 // preflightPlan runs preflight, returning nil (with a note) when it can't.
 func preflightPlan(ctx context.Context, dumpPath string, stderrFile *os.File) *toc.RestorePlan {
 	if dumpPath == "" {
@@ -198,7 +217,7 @@ func preflightPlan(ctx context.Context, dumpPath string, stderrFile *os.File) *t
 // hack. A signal death or any real error keeps a failing code.
 func exitCode(result *runner.Result, snap aggregator.Snapshot, stderrFile *os.File) int {
 	code := result.ExitCode
-	if code != 0 && !result.Signaled && snap.ErrReal == 0 && os.Getenv("ELE_STRICT_EXIT") == "" {
+	if code != 0 && !result.Signaled && snap.ErrReal == 0 && !strictExit() {
 		fmt.Fprintf(stderrFile, "\nele: pg_restore exited %d but all errors were benign; normalizing to 0\n", code)
 		return 0
 	}

@@ -342,3 +342,91 @@ func TestLiveClose(t *testing.T) {
 		t.Error("Close should restore the cursor")
 	}
 }
+
+// countlessSample is the stdin restore: counts, no denominators, same errors.
+func countlessSample() aggregator.Snapshot {
+	s := sample()
+	s.Countless = true
+	s.Pre = aggregator.PhaseProgress{Done: 1009, Complete: true}
+	s.Data = aggregator.PhaseProgress{Done: 166}
+	s.Post = aggregator.PhaseProgress{Done: 4}
+	return s
+}
+
+// TestFrameCountless: with no plan there is nothing to draw a bar against, so
+// the rows carry counts and nothing that implies a fraction. Everything that
+// never needed denominators - the working line, the log line, the error panel -
+// stays exactly as it was.
+func TestFrameCountless(t *testing.T) {
+	s := countlessSample()
+	s.Working = []aggregator.WorkItem{{Desc: "TABLE DATA", Name: "activity_logs"}}
+	out := joined(Frame(s, Opts{Title: "throwaway", LogPath: "run.log", Spinner: '⣾'}))
+
+	for _, want := range []string{
+		"pre-data   1009 objects", "data       166 objects", "post-data  4 objects",
+		"done",          // pre-data finished, and says so without a bar
+		"activity_logs", // working line intact
+		"run.log",
+		"1909 total", "0 real",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("countless frame missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"░", "█", "▓", "▒", "%", "/1009"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("countless frame still shows %q (no denominators exist):\n%s", unwanted, out)
+		}
+	}
+}
+
+// The summary mirrors the live block, so it drops the bars too.
+func TestSummaryCountless(t *testing.T) {
+	var buf bytes.Buffer
+	Summary(&buf, countlessSample(), "run.log", time.Minute, 100)
+	out := buf.String()
+
+	if !strings.Contains(out, "data       166 objects") {
+		t.Errorf("countless summary missing the data count:\n%s", out)
+	}
+	if strings.Contains(out, "░") || strings.Contains(out, "166/") {
+		t.Errorf("countless summary still shows a bar or a fraction:\n%s", out)
+	}
+	if !strings.Contains(out, "success") {
+		t.Errorf("countless summary missing the verdict:\n%s", out)
+	}
+}
+
+// TestPlainProgressCountless: deciles can't fire without totals, so the plain
+// line paces on the object count instead. The old rule would have emitted once
+// and then gone silent for the whole restore.
+func TestPlainProgressCountless(t *testing.T) {
+	var buf bytes.Buffer
+	pp := NewPlainProgress(&buf)
+
+	snap := func(pre, data int) aggregator.Snapshot {
+		return aggregator.Snapshot{
+			Countless: true,
+			Pre:       aggregator.PhaseProgress{Done: pre},
+			Data:      aggregator.PhaseProgress{Done: data},
+		}
+	}
+
+	pp.Update(snap(0, 0), 0)               // first tick -> emits
+	pp.Update(snap(20, 0), time.Second)    // under the step, under the interval
+	pp.Update(snap(60, 0), 2*time.Second)  // 60 objects on -> emits
+	pp.Update(snap(70, 0), 3*time.Second)  // only 10 since the last line
+	pp.Update(snap(70, 0), 20*time.Second) // quiet, but the interval elapsed -> emits
+	pp.Update(snap(70, 5), 21*time.Second) // nothing new to say
+
+	out := buf.String()
+	if n := strings.Count(out, "\n"); n != 3 {
+		t.Errorf("emitted %d lines, want 3:\n%s", n, out)
+	}
+	if !strings.Contains(out, "pre 70 · data 0") {
+		t.Errorf("counts not reported bare:\n%s", out)
+	}
+	if strings.Contains(out, "0/0") {
+		t.Errorf("plain line invented a denominator:\n%s", out)
+	}
+}

@@ -24,7 +24,8 @@ const replaySeconds = 12
 
 // Replay reruns a captured pg_restore stderr log through the full pipeline
 // without touching a database - a safe dry-run of the live view. planSource is
-// either a real dump (preflighted) or a saved `pg_restore -l` listing file;
+// a real dump (preflighted), a saved `pg_restore -l` listing file, or "-" for
+// the countless view a planless restore gets;
 // logPath is the captured stderr. On a TTY it drives the live block paced over
 // replaySeconds, then prints the summary; otherwise it prints milestones and the
 // summary. The exit code reflects the log's verdict: real errors -> 1, else 0.
@@ -43,9 +44,14 @@ func Replay(ctx context.Context, planSource, logPath string, stdout io.Writer, s
 	p := parser.New()
 	var mu sync.Mutex
 
+	title := "(replay) " + logPath
+	if plan == nil {
+		title += " (no totals)"
+	}
+
 	start := time.Now()
 	live, stopTicker := startRenderer(stderrFile, agg, &mu, start, render.Opts{
-		Title:   "(replay) " + logPath,
+		Title:   title,
 		LogPath: logPath,
 		Styles:  render.NewStyles(stderrFile),
 	})
@@ -112,8 +118,13 @@ func replayPacing(live bool, lines int) time.Duration {
 }
 
 // loadPlan builds a RestorePlan from a dump or a saved `pg_restore -l` listing.
-// preflight.Run handles the detection for both.
+// preflight.Run handles the detection for both. "-" means no plan at all: the
+// countless replay, which is how the denominator-free view a stdin restore gets
+// can be seen and tested without a stdin restore.
 func loadPlan(ctx context.Context, source string) (*toc.RestorePlan, error) {
+	if source == "-" {
+		return nil, nil
+	}
 	res, err := preflight.Run(ctx, source)
 	if err != nil {
 		return nil, err
