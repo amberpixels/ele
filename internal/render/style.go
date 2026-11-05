@@ -13,6 +13,7 @@ type Styles struct {
 	bar     lipgloss.Style // filled progress cells (brand teal)
 	empty   lipgloss.Style // unfilled progress cells
 	done    lipgloss.Style // "done" marker
+	took    lipgloss.Style // a finished phase's duration: done's green, faint
 	pct     lipgloss.Style // percentage
 	benign  lipgloss.Style // benign error rows / counts
 	real    lipgloss.Style // real error rows / counts
@@ -41,6 +42,7 @@ func NewStyles(w io.Writer) *Styles {
 		bar:     s().Foreground(colTeal),
 		empty:   s().Foreground(colGray).Faint(true),
 		done:    s().Foreground(colGreen).Bold(true),
+		took:    s().Foreground(colGreen).Faint(true),
 		pct:     s().Foreground(colTeal),
 		benign:  s().Faint(true),
 		real:    s().Foreground(colRed).Bold(true),

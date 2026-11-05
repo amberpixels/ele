@@ -452,3 +452,23 @@ func TestPlainProgressCountless(t *testing.T) {
 func isASCIILetter(b byte) bool {
 	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
 }
+
+// TestFrameTimerAndPhaseTook: the header clock carries the timer icon, and a
+// finished phase reads its duration in humanized form, not as a clock.
+func TestFrameTimerAndPhaseTook(t *testing.T) {
+	s := sample()
+	s.Pre.Complete, s.Pre.Took = true, 150*time.Second
+	out := joined(Frame(s, Opts{Title: "throwaway", Elapsed: 8*time.Minute + 22*time.Second}))
+	if !strings.Contains(out, timerIcon+" 8:22") {
+		t.Errorf("header clock lacks the timer icon:\n%s", out)
+	}
+	if !strings.Contains(out, "1009/1009  done in 2.5 min") {
+		t.Errorf("finished pre-data lacks its duration:\n%s", out)
+	}
+
+	// No duration known (the phase never started): plain "done".
+	s.Pre.Took = 0
+	if out := joined(Frame(s, Opts{})); !strings.Contains(out, "1009/1009  done") || strings.Contains(out, "done in") {
+		t.Errorf("phase with no duration should read plain done:\n%s", out)
+	}
+}

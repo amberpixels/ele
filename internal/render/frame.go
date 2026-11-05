@@ -171,7 +171,7 @@ func phaseCount(st *Styles, name string, p aggregator.PhaseProgress) string {
 		return line
 	}
 	pad := max(barWidth-ansi.StringWidth(count), 1)
-	return line + strings.Repeat(" ", pad) + "  " + st.done.Render("done")
+	return line + strings.Repeat(" ", pad) + "  " + doneMark(st, p)
 }
 
 func objectWord(n int) string {
@@ -204,7 +204,7 @@ func phaseBar(st *Styles, name string, fill rune, p aggregator.PhaseProgress, no
 	status := fmt.Sprintf("%d/%d", done, total)
 	switch {
 	case complete:
-		status += "  " + st.done.Render("done")
+		status += "  " + doneMark(st, p)
 	case total > 0:
 		status += "  " + st.pct.Render(fmt.Sprintf("%d%%", done*100/total))
 	}
@@ -252,14 +252,37 @@ func dataNote(s aggregator.Snapshot) string {
 	return humanize.Bytes(s.BytesDone) + " / " + humanize.Bytes(s.BytesTotal)
 }
 
-// headerLine renders the title with the elapsed time right-aligned and dim.
+// timerIcon marks a right-aligned duration as a running timer, so the header
+// clock can't be mistaken for the time of day.
+const timerIcon = "◷"
+
+// clockText is a running timer as plain text: the icon and the duration as
+// M:SS / H:MM:SS.
+func clockText(d time.Duration) string {
+	return timerIcon + " " + years.FormatDurationClock(d)
+}
+
+// clock renders clockText in the timer style.
+func clock(st *Styles, d time.Duration) string { return st.timer.Render(clockText(d)) }
+
+// doneMark renders a finished phase: "done", plus how long it ran once known.
+// Sub-second phases skip the duration rather than reading "done in 0 s".
+func doneMark(st *Styles, p aggregator.PhaseProgress) string {
+	mark := st.done.Render("done")
+	if p.Took >= time.Second {
+		mark += st.took.Render(" in " + humanize.Duration(p.Took))
+	}
+	return mark
+}
+
+// headerLine renders the title with the elapsed time right-aligned in the timer style.
 // When width is unknown it falls back to appending the time after a separator;
 // elapsed <= 0 is omitted entirely.
 func headerLine(st *Styles, title string, elapsed time.Duration, width int) string {
 	if elapsed <= 0 {
 		return title
 	}
-	right := st.timer.Render(years.FormatDurationClock(elapsed))
+	right := clock(st, elapsed)
 	edge := metaEdge(width)
 	if edge > ansi.StringWidth(title)+ansi.StringWidth(right)+1 {
 		gap := edge - ansi.StringWidth(title) - ansi.StringWidth(right)
@@ -296,7 +319,7 @@ func workingLine(st *Styles, items []aggregator.WorkItem, spinner rune, width in
 	if it.Elapsed < workingTimerMin {
 		return ls
 	}
-	right := st.timer.Render(years.FormatDurationClock(it.Elapsed))
+	right := clock(st, it.Elapsed)
 
 	avail := metaEdge(width) - labelCol
 	if avail <= 0 {

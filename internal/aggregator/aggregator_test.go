@@ -397,3 +397,51 @@ func TestCountlessParallel(t *testing.T) {
 		t.Error("no item timings; launching/finished pairs should still time")
 	}
 }
+
+// TestPhaseTook: a serial phase runs from its first create until the first data
+// event ends it, and reports no duration while it is still running.
+func TestPhaseTook(t *testing.T) {
+	plan := loadPlan(t)
+	pre, _, _, _ := plan.PhaseCounts()
+	base := time.Unix(1_000_000, 0)
+	clock := base
+	a := New(plan, Config{})
+	a.now = func() time.Time { return clock }
+
+	// The DROP wave before the first create is cleanup, not pre-data time.
+	a.Feed(parser.Event{Kind: parser.KindDropping, Desc: "TABLE", Name: "old"})
+	clock = base.Add(time.Minute)
+	for range pre - 1 {
+		a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "TABLE", Name: "t"})
+	}
+	clock = base.Add(3*time.Minute + 30*time.Second)
+	if s := a.Snapshot(); s.Pre.Took != 0 {
+		t.Errorf("pre took %v while still running, want 0", s.Pre.Took)
+	}
+
+	// The first data event closes pre-data (with one entry skipped).
+	a.Feed(parser.Event{Kind: parser.KindProcessingData, Name: "public.t"})
+	clock = base.Add(10 * time.Minute)
+	if s := a.Snapshot(); !s.Pre.Complete || s.Pre.Took != 150*time.Second {
+		t.Errorf("pre = %+v, want complete in 2m30s", s.Pre)
+	}
+}
+
+// TestPhaseTookParallel: a parallel phase's clock starts at the first launch,
+// not at the first finish.
+func TestPhaseTookParallel(t *testing.T) {
+	base := time.Unix(1_000_000, 0)
+	clock := base
+	a := New(loadPlan(t), Config{})
+	a.now = func() time.Time { return clock }
+
+	a.Feed(parser.Event{Kind: parser.KindLaunchItem, DumpID: 3864, Desc: "TABLE DATA", Tag: "authors"})
+	clock = base.Add(40 * time.Second)
+	a.Feed(parser.Event{Kind: parser.KindFinishItem, DumpID: 3864, Desc: "TABLE DATA", Tag: "authors"})
+	clock = base.Add(time.Minute)
+	a.Finish()
+
+	if s := a.Snapshot(); s.Data.Took != time.Minute {
+		t.Errorf("data took %v, want 1m from launch to finish", s.Data.Took)
+	}
+}

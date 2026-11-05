@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/amberpixels/years"
-
 	"github.com/amberpixels/ele/internal/aggregator"
 )
 
@@ -96,7 +94,7 @@ func (p *PlainProgress) emit(s aggregator.Snapshot, elapsed time.Duration) {
 		fmt.Fprintf(p.w, " · %s", p.st.dim.Render(workingDesc(s.Working[0])))
 	}
 	if elapsed > 0 {
-		fmt.Fprintf(p.w, " · %s", p.st.dim.Render(years.FormatDurationClock(elapsed)))
+		fmt.Fprintf(p.w, " · %s", p.st.dim.Render(clockText(elapsed)))
 	}
 	fmt.Fprintln(p.w)
 }

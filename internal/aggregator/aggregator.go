@@ -40,9 +40,13 @@ type Aggregator struct {
 	// (serial, where order is strict) and for every section at Finish.
 	sectionDone map[toc.Section]bool
 	doneIDs     map[int]bool // entries already counted, keyed by dump id
-	bytesTotal  int64
-	bytesDone   int64
-	byteSized   bool
+	// when each section saw its first activity and when it first read complete;
+	// their difference is the duration a finished phase row shows.
+	phaseStart map[toc.Section]time.Time
+	phaseEnd   map[toc.Section]time.Time
+	bytesTotal int64
+	bytesDone  int64
+	byteSized  bool
 
 	// --clean DROP wave: pg_restore drops every existing object before restoring.
 	// It precedes all three sections and has no denominator, so we just count it.
@@ -88,6 +92,8 @@ func New(plan *toc.RestorePlan, cfg Config) *Aggregator {
 		done:        map[toc.Section]int{},
 		sectionDone: map[toc.Section]bool{},
 		doneIDs:     map[int]bool{},
+		phaseStart:  map[toc.Section]time.Time{},
+		phaseEnd:    map[toc.Section]time.Time{},
 		inflight:    map[int]*inflightItem{},
 		groups:      map[string]*errorGroup{},
 	}
@@ -108,6 +114,22 @@ func New(plan *toc.RestorePlan, cfg Config) *Aggregator {
 
 // Feed folds one event into the running state.
 func (a *Aggregator) Feed(ev parser.Event) {
+	a.apply(ev)
+	a.stampPhaseEnds()
+}
+
+// Finish records that the restore is over: every phase's unprocessed entries are
+// now known to be skipped rather than pending. Call once after the stream ends
+// and the process exited normally (not on a signal/abort, where the remainder is
+// genuinely incomplete).
+func (a *Aggregator) Finish() {
+	a.sectionDone[toc.PreData] = true
+	a.sectionDone[toc.Data] = true
+	a.sectionDone[toc.PostData] = true
+	a.stampPhaseEnds()
+}
+
+func (a *Aggregator) apply(ev parser.Event) {
 	switch ev.Kind {
 	case parser.KindProcessingItem:
 		a.parallel = true
@@ -115,6 +137,9 @@ func (a *Aggregator) Feed(ev parser.Event) {
 
 	case parser.KindLaunchItem:
 		a.parallel = true
+		// A parallel item reports completion only when it finishes, so its
+		// phase's clock starts at launch, not at the first completion.
+		a.startPhase(a.sectionOf(ev.DumpID, ev.Desc))
 		a.inflight[ev.DumpID] = &inflightItem{desc: ev.Desc, tag: ev.Tag, start: a.now()}
 
 	case parser.KindFinishItem:
@@ -161,16 +186,6 @@ func (a *Aggregator) Feed(ev parser.Event) {
 	case parser.KindInfo, parser.KindWarning:
 		// Status lines and warnings move no counter.
 	}
-}
-
-// Finish records that the restore is over: every phase's unprocessed entries are
-// now known to be skipped rather than pending. Call once after the stream ends
-// and the process exited normally (not on a signal/abort, where the remainder is
-// genuinely incomplete).
-func (a *Aggregator) Finish() {
-	a.sectionDone[toc.PreData] = true
-	a.sectionDone[toc.Data] = true
-	a.sectionDone[toc.PostData] = true
 }
 
 // completeID marks the entry with the given dump id done, once. Its phase and
@@ -229,12 +244,49 @@ func (a *Aggregator) setCurrent(desc, name string) {
 	a.curDesc, a.curName, a.curStart, a.hasCurrent = desc, name, a.now(), true
 }
 
+// sectionOf resolves an item's section from the plan, falling back to its
+// description when there is no plan or the plan doesn't know the id.
+func (a *Aggregator) sectionOf(id int, desc string) toc.Section {
+	if a.plan != nil {
+		if e, ok := a.plan.Get(id); ok {
+			return e.Section
+		}
+	}
+	return toc.SectionOf(desc)
+}
+
+// startPhase records the first activity in a section. Serial creating and
+// processing lines are emitted as an item starts, so the first count is also the
+// phase's start; parallel items start their phase at launch instead.
+func (a *Aggregator) startPhase(s toc.Section) {
+	if s == toc.SectionUnknown {
+		return
+	}
+	if _, ok := a.phaseStart[s]; !ok {
+		a.phaseStart[s] = a.now()
+	}
+}
+
+// stampPhaseEnds records when each started section first reads complete. A
+// section that never started (no entries) gets no end, so it shows no duration.
+func (a *Aggregator) stampPhaseEnds() {
+	for _, s := range []toc.Section{toc.PreData, toc.Data, toc.PostData} {
+		if _, ended := a.phaseEnd[s]; ended {
+			continue
+		}
+		if _, started := a.phaseStart[s]; started && a.complete(s) {
+			a.phaseEnd[s] = a.now()
+		}
+	}
+}
+
 // incPhase increments a phase's done count, capped at its total so a stray
 // double-count can never push a bar past 100%. The first real completion also
 // ends the DROP wave. Countless mode has no total to cap against - and nothing
 // to overflow, since it draws counts rather than bars.
 func (a *Aggregator) incPhase(s toc.Section) {
 	a.dropWaveOver = true
+	a.startPhase(s)
 	if a.countless || a.done[s] < a.total[s] {
 		a.done[s]++
 	}

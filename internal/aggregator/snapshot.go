@@ -16,6 +16,9 @@ type PhaseProgress struct {
 	Total    int
 	Skipped  int  // planned entries pg_restore skipped (known once the phase is over)
 	Complete bool // the phase's restore has finished
+	// Took is how long a complete phase ran, from its first activity to the
+	// moment it finished; 0 while running or when the phase never started.
+	Took time.Duration
 }
 
 // InFlightItem is a parallel item currently being restored.
@@ -91,13 +94,23 @@ const maxSlowest = 5
 func (a *Aggregator) phase(s toc.Section) PhaseProgress {
 	done, total := a.done[s], a.total[s]
 	p := PhaseProgress{Section: s, Done: done, Total: total}
-	if a.sectionDone[s] || (total > 0 && done >= total) {
+	if a.complete(s) {
 		p.Complete = true
 		if total > done {
 			p.Skipped = total - done
 		}
 	}
+	if end, ok := a.phaseEnd[s]; ok {
+		p.Took = end.Sub(a.phaseStart[s])
+	}
 	return p
+}
+
+// complete reports whether a section's restore is over: either a later stage
+// said so, or every planned entry has been counted.
+func (a *Aggregator) complete(s toc.Section) bool {
+	total := a.total[s]
+	return a.sectionDone[s] || (total > 0 && a.done[s] >= total)
 }
 
 // Snapshot returns a consistent, sorted view of the current state.

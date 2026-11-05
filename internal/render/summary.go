@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amberpixels/years"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/amberpixels/ele/internal/aggregator"
@@ -74,7 +73,7 @@ func outcomeLine(st *Styles, s aggregator.Snapshot, elapsed time.Duration, width
 	if elapsed <= 0 {
 		return line
 	}
-	right := st.timer.Render(years.FormatDurationClock(elapsed))
+	right := clock(st, elapsed)
 	edge := metaEdge(width)
 	if edge > ansi.StringWidth(line)+ansi.StringWidth(right)+1 {
 		gap := edge - ansi.StringWidth(line) - ansi.StringWidth(right)
