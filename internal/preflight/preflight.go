@@ -7,6 +7,7 @@ package preflight
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -54,7 +55,7 @@ func (f Format) String() string {
 // is impossible and Run returns an error for the caller to degrade.
 func Run(ctx context.Context, dumpPath string) (*Result, error) {
 	if dumpPath == "" {
-		return nil, fmt.Errorf("preflight: no dump path (stdin restore); caller must degrade")
+		return nil, errors.New("preflight: no dump path (stdin restore); caller must degrade")
 	}
 
 	// A saved `pg_restore -l` listing is plain text we can parse without a dump

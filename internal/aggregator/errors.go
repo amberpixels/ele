@@ -20,10 +20,11 @@ const placeholder = `"…"`
 // a stable group template, and returns the spans it removed. Postgres quotes
 // all identifiers, so blanking the quoted parts collapses "role \"a\"..." and
 // "role \"b\"..." to one template while keeping a and b as sample parameters.
-func fingerprint(msg string) (template string, params []string) {
+func fingerprint(msg string) (string, []string) {
 	var b, cur strings.Builder
+	var params []string
 	inQuote := false
-	for i := 0; i < len(msg); i++ {
+	for i := range len(msg) {
 		switch c := msg[i]; {
 		case c == '"' && !inQuote:
 			inQuote = true

@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amberpixels/ele/internal/aggregator"
-	"github.com/amberpixels/ele/internal/humanize"
 	"github.com/amberpixels/years"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/amberpixels/ele/internal/aggregator"
+	"github.com/amberpixels/ele/internal/humanize"
 )
 
 // barWidth is the fixed cell width of a phase bar.
@@ -194,7 +195,11 @@ func phaseBar(st *Styles, name string, fill rune, p aggregator.PhaseProgress, no
 	case total > 0:
 		filled = done * barWidth / total
 	}
-	bar := st.bar.Render(strings.Repeat(string(fill), filled)) + st.empty.Render(strings.Repeat(string(fillEmpty), barWidth-filled))
+	bar := st.bar.Render(
+		strings.Repeat(string(fill), filled),
+	) + st.empty.Render(
+		strings.Repeat(string(fillEmpty), barWidth-filled),
+	)
 
 	status := fmt.Sprintf("%d/%d", done, total)
 	switch {
@@ -235,10 +240,7 @@ func cleanupLine(st *Styles, s aggregator.Snapshot, spinner rune) string {
 		}
 	}
 	activity := prefix + st.dim.Render(label)
-	pad := barWidth - ansi.StringWidth(activity)
-	if pad < 1 {
-		pad = 1
-	}
+	pad := max(barWidth-ansi.StringWidth(activity), 1)
 	return activity + strings.Repeat(" ", pad) + fmt.Sprintf("  %d dropped", s.DropCount)
 }
 
@@ -318,27 +320,27 @@ func errorCounter(st *Styles, s aggregator.Snapshot) string {
 	if s.ErrReal > 0 {
 		realStyle = st.real
 	}
-	real := realStyle.Render(fmt.Sprintf("%d real", s.ErrReal))
-	return fmt.Sprintf("%d total · %s · %s", s.ErrTotal, benign, real)
+	reals := realStyle.Render(fmt.Sprintf("%d real", s.ErrReal))
+	return fmt.Sprintf("%d total · %s · %s", s.ErrTotal, benign, reals)
 }
 
 // capGroups limits how many error groups a panel lists, returning the visible
 // slice and how many were folded away. Errors arrives sorted real-first then
 // most-recent-first, so the hidden tail is always benign and oldest - and every
 // real group stays visible even when that means keeping more than limit.
-func capGroups(errs []aggregator.ErrorGroup, limit int) (shown []aggregator.ErrorGroup, hidden int) {
+func capGroups(errs []aggregator.ErrorGroup, limit int) ([]aggregator.ErrorGroup, int) {
 	if len(errs) <= limit {
 		return errs, 0
 	}
 	keep := limit
-	real := 0
+	reals := 0
 	for _, g := range errs {
 		if !g.Benign {
-			real++
+			reals++
 		}
 	}
-	if real > keep {
-		keep = real // never hide a real error group
+	if reals > keep {
+		keep = reals // never hide a real error group
 	}
 	if keep >= len(errs) {
 		return errs, 0

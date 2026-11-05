@@ -157,7 +157,20 @@ func (a *Aggregator) Feed(ev parser.Event) {
 
 	case parser.KindUnknown:
 		a.unknown++
+
+	case parser.KindInfo, parser.KindWarning:
+		// Status lines and warnings move no counter.
 	}
+}
+
+// Finish records that the restore is over: every phase's unprocessed entries are
+// now known to be skipped rather than pending. Call once after the stream ends
+// and the process exited normally (not on a signal/abort, where the remainder is
+// genuinely incomplete).
+func (a *Aggregator) Finish() {
+	a.sectionDone[toc.PreData] = true
+	a.sectionDone[toc.Data] = true
+	a.sectionDone[toc.PostData] = true
 }
 
 // completeID marks the entry with the given dump id done, once. Its phase and
@@ -206,16 +219,6 @@ func (a *Aggregator) completeSerial(s toc.Section) {
 	if s == toc.Data {
 		a.sectionDone[toc.PreData] = true
 	}
-}
-
-// Finish records that the restore is over: every phase's unprocessed entries are
-// now known to be skipped rather than pending. Call once after the stream ends
-// and the process exited normally (not on a signal/abort, where the remainder is
-// genuinely incomplete).
-func (a *Aggregator) Finish() {
-	a.sectionDone[toc.PreData] = true
-	a.sectionDone[toc.Data] = true
-	a.sectionDone[toc.PostData] = true
 }
 
 // setCurrent records the object a serial restore is now working on, restarting

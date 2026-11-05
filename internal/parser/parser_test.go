@@ -179,6 +179,7 @@ func TestParallelInterleaving(t *testing.T) {
 			launched[e.DumpID] = true
 		case KindFinishItem:
 			finished[e.DumpID] = true
+		default:
 		}
 	}
 	if len(launched) == 0 {

@@ -138,7 +138,7 @@ func parseLine(line string) (Entry, bool) {
 // matchDesc consumes the longest known description from the front of toks,
 // returning it, its section, and the token count. An unknown leading token
 // yields a one-word SectionUnknown desc so the entry still survives.
-func matchDesc(toks []string) (desc string, section Section, n int) {
+func matchDesc(toks []string) (string, Section, int) {
 	limit := min(maxDescWords, len(toks))
 	for k := limit; k >= 1; k-- {
 		candidate := strings.Join(toks[:k], " ")
@@ -157,7 +157,7 @@ func ParseListingLine(line string) (Entry, bool) { return parseLine(line) }
 // MatchDesc consumes the longest known object description from the front of
 // toks, returning it and how many tokens it spanned. It returns ("", 0) for an
 // empty input and a one-token desc when nothing matches.
-func MatchDesc(toks []string) (desc string, n int) {
+func MatchDesc(toks []string) (string, int) {
 	if len(toks) == 0 {
 		return "", 0
 	}
@@ -192,8 +192,10 @@ func (p *RestorePlan) SetBytes(dumpID int, bytes int64) {
 	}
 }
 
-// PhaseCounts returns per-section entry counts - the exact progress denominators.
-func (p *RestorePlan) PhaseCounts() (pre, data, post, unknown int) {
+// PhaseCounts returns per-section entry counts - the exact progress denominators -
+// in the order pre-data, data, post-data, unknown.
+func (p *RestorePlan) PhaseCounts() (int, int, int, int) {
+	var pre, data, post, unknown int
 	for i := range p.Entries {
 		switch p.Entries[i].Section {
 		case PreData:

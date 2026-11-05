@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/amberpixels/ele/internal/aggregator"
 	"github.com/amberpixels/years"
+
+	"github.com/amberpixels/ele/internal/aggregator"
 )
 
 // countlessStep and countlessInterval pace the line when there are no

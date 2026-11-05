@@ -124,7 +124,15 @@ func TestAggregateParallel(t *testing.T) {
 
 func TestAggregateSerial(t *testing.T) {
 	s := replay(t, "clean-serial.stderr", Config{Clean: true, NoOwner: true}).Snapshot()
-	t.Logf("pre %d/%d  data %d/%d  post %d/%d", s.Pre.Done, s.Pre.Total, s.Data.Done, s.Data.Total, s.Post.Done, s.Post.Total)
+	t.Logf(
+		"pre %d/%d  data %d/%d  post %d/%d",
+		s.Pre.Done,
+		s.Pre.Total,
+		s.Data.Done,
+		s.Data.Total,
+		s.Post.Done,
+		s.Post.Total,
+	)
 
 	assertProgressSane(t, s)
 
@@ -245,7 +253,7 @@ func TestPhaseSkippedOnFinish(t *testing.T) {
 	a := New(plan, Config{})
 
 	// Complete all but the last pre-data entry, then finish the run.
-	for i := 0; i < pre-1; i++ {
+	for range pre - 1 {
 		a.Feed(parser.Event{Kind: parser.KindCreating, Desc: "TABLE", Name: "t"})
 	}
 	if s := a.Snapshot(); s.Pre.Complete {

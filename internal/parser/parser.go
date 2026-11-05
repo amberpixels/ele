@@ -156,20 +156,20 @@ func cut(body, tag string) (string, bool) {
 // splitItem parses "<id> <desc...> <tag...>" from an item line. desc is matched
 // against the known TOC descriptions (it may be multi-word, e.g. "TABLE DATA");
 // the remainder is the tag.
-func splitItem(s string) (id int, desc, tag string) {
+func splitItem(s string) (int, string, string) {
 	fields := strings.Fields(s)
 	if len(fields) == 0 {
 		return 0, "", ""
 	}
-	id, _ = strconv.Atoi(fields[0])
+	id, _ := strconv.Atoi(fields[0])
 	desc, n := toc.MatchDesc(fields[1:])
-	tag = strings.Join(fields[1+n:], " ")
+	tag := strings.Join(fields[1+n:], " ")
 	return id, desc, tag
 }
 
 // splitDescTag parses "<desc...> <rest...>" where desc is a known multi-word
 // TOC description and rest is whatever follows (a tag or object name).
-func splitDescTag(s string) (desc, rest string) {
+func splitDescTag(s string) (string, string) {
 	fields := strings.Fields(s)
 	if len(fields) == 0 {
 		return "", ""
@@ -180,7 +180,7 @@ func splitDescTag(s string) (desc, rest string) {
 
 // splitDescQuoted parses `<desc...> "<name>"` from a creating line, returning
 // the description and the unquoted name.
-func splitDescQuoted(s string) (desc, name string) {
+func splitDescQuoted(s string) (string, string) {
 	q := strings.IndexByte(s, '"')
 	if q < 0 {
 		return strings.TrimSpace(s), ""

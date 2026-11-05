@@ -11,6 +11,8 @@ version     := `git describe --tags --always --dirty 2>/dev/null || echo dev`
 # file - override per run: `just replay ele-20260722-161815.log latest.toc`
 plan_file := "demo.loc"
 
+standardgo := "github.com/amberpixels/standardgo/cmd/standardgo@latest"
+
 # Default: list available commands
 [private]
 default:
@@ -51,38 +53,45 @@ clean:
 
 # --- Formatting & linting ---
 #
-# Convention: `fmt` is MUTABLE (formats + auto-fixes everything that can be
-# fixed), `lint` is IMMUTABLE (reports issues only, never writes).
+# Go linting is standardgo (https://github.com/amberpixels/standardgo): the
+# ruleset and the golangci-lint engine ship compiled into one binary, so there
+# is no .golangci.yml here and there must not be one - it would not be read.
+# It runs via `go run`, not a go.mod tool directive, so the linter's own
+# dependencies stay out of ele's go.mod.
+# @latest rather than a pin: standardgo is in no go.mod, so dependabot cannot
+# see it and nothing would ever bump it. The trade is reproducibility - a
+# standardgo release can turn lint red on a change that touched nothing.
+#
+# Convention: `fmt` rewrites to canonical form and decides nothing, `fix`
+# applies judgement (run it on a clean tree and read the diff), `lint` only
+# reports and never writes.
 
-# Format + auto-fix Go code - mutable
+# Format Go code - rewrites to canonical form
 [group('fmt')]
 [no-exit-message]
-fmt: _golangci-install
-    golangci-lint fmt
-    golangci-lint run --fix
+fmt:
+    go run {{ standardgo }} fmt ./...
     go mod tidy
 
-# Lint with golangci-lint (check only) - immutable
+# Auto-fix lint findings - mutates and makes judgement calls
+[group('fix')]
+[no-exit-message]
+fix:
+    go run {{ standardgo }} ./... --fix
+
+# Lint Go code with standardgo - reports findings, changes nothing
 [group('lint')]
 [no-exit-message]
-lint: _golangci-install vet
-    golangci-lint run
+lint: vet
+    go run {{ standardgo }} ./...
 
-# golangci-lint runs govet too, but CI invokes plain `go vet` as its own step,
-# so a vet regression is caught even without golangci-lint installed.
+# standardgo runs govet too; `vet` stays its own recipe so it can run without
+# building the lint engine.
 
 # Vet - the real `go vet` across all packages - immutable
 [group('lint')]
 vet:
     go vet ./...
-
-# Install golangci-lint (v2) if missing
-[private]
-_golangci-install:
-    #!/usr/bin/env bash
-    if ! command -v golangci-lint &>/dev/null; then
-        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-    fi
 
 # --- Testing ---
 
@@ -110,9 +119,9 @@ gen-messages--check:
 
 # --- CI & release ---
 
-# Everything CI runs, in CI's order (build, vet, test) - immutable
+# Everything CI runs, in CI's order (build, vet, lint, test) - immutable
 [group('ci')]
-ci: build vet test
+ci: build lint test
 
 # Validate the GoReleaser config
 [group('release')]

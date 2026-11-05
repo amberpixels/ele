@@ -24,7 +24,7 @@ const defaultWidth = 100
 // Size returns the terminal width and height for stderr. Width falls back to a
 // sane default when it isn't a terminal or can't be measured; height is 0 then,
 // meaning "unknown" - callers must not cap anything to it.
-func Size(stderr *os.File) (width, height int) {
+func Size(stderr *os.File) (int, int) {
 	if w, h, err := term.GetSize(int(stderr.Fd())); err == nil && w > 0 {
 		return w, h
 	}

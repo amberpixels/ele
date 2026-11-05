@@ -128,7 +128,13 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderrFile *os.Fi
 // startRenderer starts the progress loop: a live repaint block on a TTY, or
 // periodic one-line milestones when output is plain. It returns the Live writer
 // (nil in plain mode) and a stop function that halts the ticker.
-func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mutex, start time.Time, opt render.Opts) (*render.Live, func()) {
+func startRenderer(
+	stderrFile *os.File,
+	agg *aggregator.Aggregator,
+	mu *sync.Mutex,
+	start time.Time,
+	opt render.Opts,
+) (*render.Live, func()) {
 	done := make(chan struct{})
 	var wg sync.WaitGroup
 
@@ -181,7 +187,7 @@ func startRenderer(stderrFile *os.File, agg *aggregator.Aggregator, mu *sync.Mut
 // cursor back up over it, so it has to leave the cursor a row to rest on - a
 // block as tall as the terminal scrolls itself out from under the cursor and
 // drifts down, stranding a copy of its top line on every repaint.
-func blockSize(stderrFile *os.File) (width, maxLines int) {
+func blockSize(stderrFile *os.File) (int, int) {
 	w, h := render.Size(stderrFile)
 	if h > 1 {
 		return w, h - 1

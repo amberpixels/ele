@@ -18,8 +18,18 @@ func sample() aggregator.Snapshot {
 		Post:     aggregator.PhaseProgress{Done: 4, Total: 1156},
 		ErrTotal: 1909, ErrBenign: 1909, ErrReal: 0,
 		Errors: []aggregator.ErrorGroup{
-			{Template: `could not execute query: ERROR:  index "…" does not exist`, Count: 746, Distinct: 746, Benign: true},
-			{Template: `could not execute query: ERROR:  relation "…" does not exist`, Count: 654, Distinct: 252, Benign: true},
+			{
+				Template: `could not execute query: ERROR:  index "…" does not exist`,
+				Count:    746,
+				Distinct: 746,
+				Benign:   true,
+			},
+			{
+				Template: `could not execute query: ERROR:  relation "…" does not exist`,
+				Count:    654,
+				Distinct: 252,
+				Benign:   true,
+			},
 		},
 	}
 }
@@ -62,7 +72,9 @@ func TestFrameWorking(t *testing.T) {
 	s := sample()
 	s.Working = []aggregator.WorkItem{
 		{Desc: "TABLE DATA", Name: "big_table", Elapsed: 72 * time.Second},
-		{Name: "other"}, {Name: "third"}, {Name: "fourth"},
+		{Name: "other"},
+		{Name: "third"},
+		{Name: "fourth"},
 	}
 	out := joined(Frame(s, Opts{Spinner: '⣾'}))
 	if !strings.Contains(out, "working") || !strings.Contains(out, "big_table") {
@@ -91,7 +103,12 @@ func TestFrameCleanupAboveBars(t *testing.T) {
 		}
 	}
 	if ci < 0 || pi < 0 || ci >= pi {
-		t.Errorf("cleanup should render just above pre-data (cleanup=%d pre-data=%d):\n%s", ci, pi, strings.Join(frame, "\n"))
+		t.Errorf(
+			"cleanup should render just above pre-data (cleanup=%d pre-data=%d):\n%s",
+			ci,
+			pi,
+			strings.Join(frame, "\n"),
+		)
 	}
 }
 
@@ -273,7 +290,7 @@ func vScreen(out string) map[int]string {
 		switch {
 		case strings.HasPrefix(out[i:], "\x1b["):
 			j := i + 2
-			for j < len(out) && !((out[j] >= 'A' && out[j] <= 'Z') || (out[j] >= 'a' && out[j] <= 'z')) {
+			for j < len(out) && !isASCIILetter(out[j]) {
 				j++
 			}
 			num := 0
@@ -429,4 +446,9 @@ func TestPlainProgressCountless(t *testing.T) {
 	if strings.Contains(out, "0/0") {
 		t.Errorf("plain line invented a denominator:\n%s", out)
 	}
+}
+
+// isASCIILetter reports whether b ends a CSI escape sequence.
+func isASCIILetter(b byte) bool {
+	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
 }

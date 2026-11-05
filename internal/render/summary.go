@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amberpixels/ele/internal/aggregator"
 	"github.com/amberpixels/years"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/amberpixels/ele/internal/aggregator"
 )
 
 // Summary prints the once-only end-of-run report: plain text that survives

@@ -10,7 +10,14 @@ func TestDetectFlags(t *testing.T) {
 		hasDB          bool
 		dbName         string
 	}{
-		{"typical restore", []string{"-d", "throwaway", "--clean", "--no-owner", "x.dump"}, true, true, true, "throwaway"},
+		{
+			"typical restore",
+			[]string{"-d", "throwaway", "--clean", "--no-owner", "x.dump"},
+			true,
+			true,
+			true,
+			"throwaway",
+		},
 		{"short flags", []string{"-c", "-O", "-d", "mydb", "x.dump"}, true, true, true, "mydb"},
 		{"dbname equals form", []string{"--dbname=prod", "x.dump"}, false, false, true, "prod"},
 		{"no database (script out)", []string{"-f", "out.sql", "x.dump"}, false, false, false, ""},

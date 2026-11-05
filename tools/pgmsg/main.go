@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"go/format"
@@ -52,7 +53,7 @@ func main() {
 		log.Fatal("need at least one tag and one language")
 	}
 
-	catalogs, err := load(tagList, langList, *snapshots, *offline)
+	catalogs, err := load(context.Background(), tagList, langList, *snapshots, *offline)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func main() {
 
 // load returns the msgid set per tag, fetching and snapshotting it unless the
 // committed snapshots were asked for.
-func load(tags, langs []string, dir string, offline bool) (map[string]map[string]bool, error) {
+func load(ctx context.Context, tags, langs []string, dir string, offline bool) (map[string]map[string]bool, error) {
 	catalogs := map[string]map[string]bool{}
 	for _, tag := range tags {
 		if offline {
@@ -86,7 +87,7 @@ func load(tags, langs []string, dir string, offline bool) (map[string]map[string
 
 		set := map[string]bool{}
 		for _, lang := range langs {
-			body, err := fetch(fmt.Sprintf(poURL, tag, lang))
+			body, err := fetch(ctx, fmt.Sprintf(poURL, tag, lang))
 			if err != nil {
 				return nil, fmt.Errorf("%s/%s.po: %w", tag, lang, err)
 			}
@@ -106,9 +107,13 @@ func load(tags, langs []string, dir string, offline bool) (map[string]map[string
 	return catalogs, nil
 }
 
-func fetch(url string) (string, error) {
+func fetch(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return "", err
+	}
 	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -170,10 +175,10 @@ func writeSnapshot(path, tag string, langs []string, set map[string]bool) error 
 	for _, id := range sorted(set) {
 		b.WriteString(strconv.Quote(id) + "\n")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	return os.WriteFile(path, []byte(b.String()), 0o600)
 }
 
 func readSnapshot(path string) (map[string]bool, error) {
@@ -182,7 +187,7 @@ func readSnapshot(path string) (map[string]bool, error) {
 		return nil, fmt.Errorf("reading snapshot (run without -offline to create it): %w", err)
 	}
 	set := map[string]bool{}
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -289,9 +294,9 @@ func resolve(tags []string, catalogs map[string]map[string]bool) ([]entry, error
 // postgres quotes every identifier, and the parser's unquote is what reads that
 // back. Leaving it in the literal would also make the match intolerant of a
 // release that stopped quoting there.
-func literal(msgid string) (lit string, exact bool) {
-	if i := strings.IndexByte(msgid, '%'); i >= 0 {
-		return strings.TrimSuffix(msgid[:i], `"`), false
+func literal(msgid string) (string, bool) {
+	if before, _, ok := strings.Cut(msgid, "%"); ok {
+		return strings.TrimSuffix(before, `"`), false
 	}
 	return msgid, true
 }
@@ -348,14 +353,14 @@ func write(path string, entries []entry, tags, langs []string) error {
 	if err != nil {
 		return fmt.Errorf("formatting generated source: %w", err)
 	}
-	return os.WriteFile(path, src, 0o644)
+	return os.WriteFile(path, src, 0o600)
 }
 
 // --- helpers --------------------------------------------------------------
 
 func split(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}

@@ -16,6 +16,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go build ./...
-      - run: go vet ./...
-      - run: go test ./...
+          # Caches GOMODCACHE and GOCACHE, which keeps `just lint` from
+          # recompiling the golangci-lint engine inside standardgo on every run.
+          # standardgo runs @latest, so a new release changes no file here: the
+          # cache is restored but not re-saved until go.sum or the justfile moves.
+          cache-dependency-path: |
+            go.sum
+            justfile
+      - uses: extractions/setup-just@v4
+      # Lint goes through just so the standardgo version lives in one place.
+      - run: just ci
