@@ -65,9 +65,9 @@ homebrew_casks:
     # quarantine attribute on install so `ele` runs without the scary popup.
     hooks:
       post:
-        install: |
-          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ele"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/ele"], must_succeed: false
           end
     caveats: |
       ele wraps pg_restore, which is NOT installed by this cask.
